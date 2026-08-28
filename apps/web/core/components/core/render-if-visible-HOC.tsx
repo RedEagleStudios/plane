@@ -50,6 +50,7 @@ function RenderIfVisible(props: Props) {
 
   // Set visibility with intersection observer
   useEffect(() => {
+    if (forceRender) return;
     const target = intersectionRef.current;
     if (target) {
       const observer = new IntersectionObserver(
@@ -76,7 +77,7 @@ function RenderIfVisible(props: Props) {
         observer.unobserve(target);
       };
     }
-  }, [intersectionRef, root, verticalOffset, horizontalOffset, useIdleTime]);
+  }, [forceRender, intersectionRef, root, verticalOffset, horizontalOffset, useIdleTime]);
 
   //Set height after render
   useEffect(() => {
