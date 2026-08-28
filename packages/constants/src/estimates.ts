@@ -23,7 +23,6 @@ export enum EEstimateUpdateStages {
 
 export const estimateCount = {
   min: 2,
-  max: 6,
 };
 
 export const ESTIMATE_SYSTEMS: TEstimateSystems = {
