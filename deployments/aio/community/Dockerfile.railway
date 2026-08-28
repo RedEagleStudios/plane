@@ -1,0 +1,100 @@
+# syntax=docker/dockerfile:1.7
+ARG PLANE_VERSION=v1.4.2
+
+# Build the customized web application directly from this repository.
+FROM node:22-alpine AS web-base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"
+RUN corepack enable
+
+FROM web-base AS web-builder
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+ARG TURBO_VERSION=2.9.18
+RUN pnpm add --global turbo@${TURBO_VERSION}
+COPY . .
+RUN turbo prune --scope=web --docker
+
+FROM web-base AS web-installer
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY .gitignore .gitignore
+COPY --from=web-builder /app/out/json/ .
+COPY --from=web-builder /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=web-builder /app/out/full/ .
+COPY turbo.json turbo.json
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm fetch --store-dir=/pnpm/store
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store CI=true pnpm install --offline --frozen-lockfile --store-dir=/pnpm/store
+
+ARG VITE_API_BASE_URL=""
+ARG VITE_ADMIN_BASE_URL=""
+ARG VITE_ADMIN_BASE_PATH="/god-mode"
+ARG VITE_LIVE_BASE_URL=""
+ARG VITE_LIVE_BASE_PATH="/live"
+ARG VITE_SPACE_BASE_URL=""
+ARG VITE_SPACE_BASE_PATH="/spaces"
+ARG VITE_WEB_BASE_URL=""
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_ADMIN_BASE_URL=$VITE_ADMIN_BASE_URL
+ENV VITE_ADMIN_BASE_PATH=$VITE_ADMIN_BASE_PATH
+ENV VITE_LIVE_BASE_URL=$VITE_LIVE_BASE_URL
+ENV VITE_LIVE_BASE_PATH=$VITE_LIVE_BASE_PATH
+ENV VITE_SPACE_BASE_URL=$VITE_SPACE_BASE_URL
+ENV VITE_SPACE_BASE_PATH=$VITE_SPACE_BASE_PATH
+ENV VITE_WEB_BASE_URL=$VITE_WEB_BASE_URL
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV TURBO_TELEMETRY_DISABLED=1
+RUN pnpm turbo run build --filter=web
+
+# Prepare the AIO runtime configuration without requiring a pre-build script.
+FROM alpine:3.22 AS aio-assets
+ARG PLANE_VERSION
+WORKDIR /assets
+COPY deployments/aio/community/variables.env ./plane.env
+COPY apps/proxy/Caddyfile.aio.ce ./Caddyfile
+RUN sed -i "s/^APP_RELEASE=.*/APP_RELEASE=${PLANE_VERSION}/" plane.env \
+    && sed -i "s|^API_BASE_URL=.*|API_BASE_URL=http://localhost:3004|" plane.env \
+    && sed -i "s/^SITE_ADDRESS=.*/SITE_ADDRESS=:80/" plane.env
+
+# Reuse the matching upstream Community components; only the web image is customized.
+FROM node:22-alpine AS node-runtime
+FROM makeplane/plane-backend:${PLANE_VERSION} AS backend-img
+FROM makeplane/plane-space:${PLANE_VERSION} AS space-img
+FROM makeplane/plane-admin:${PLANE_VERSION} AS admin-img
+FROM makeplane/plane-live:${PLANE_VERSION} AS live-img
+FROM makeplane/plane-proxy:${PLANE_VERSION} AS proxy-img
+
+FROM python:3.12.10-alpine AS runner
+WORKDIR /app
+
+RUN apk add --no-cache libpq libxslt xmlsec nss-tools bash curl uuidgen ncdu vim
+
+COPY --from=node-runtime /usr/lib /usr/lib
+COPY --from=node-runtime /usr/local/lib /usr/local/lib
+COPY --from=node-runtime /usr/local/include /usr/local/include
+COPY --from=node-runtime /usr/local/bin /usr/local/bin
+
+COPY --from=web-installer /app/apps/web/build/client /app/web
+COPY --from=space-img /app /app/space
+COPY --from=admin-img /usr/share/nginx/html/god-mode /app/admin
+COPY --from=live-img /app /app/live
+RUN rm -rf /app/space/apps/space/.next/cache
+
+COPY --from=proxy-img /usr/bin/caddy /usr/bin/caddy
+COPY --from=aio-assets /assets/Caddyfile /app/proxy/Caddyfile
+
+COPY --from=backend-img /code /app/backend
+COPY --from=backend-img /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=backend-img /usr/local/bin/ /usr/local/bin/
+
+RUN pip install --no-cache-dir supervisor \
+    && mkdir -p /etc/supervisor/conf.d /app/logs/access /app/logs/error /app/data
+
+COPY deployments/aio/community/start.sh /app/start.sh
+COPY --from=aio-assets /assets/plane.env /app/plane.env
+COPY deployments/aio/community/supervisor.conf /etc/supervisor/conf.d/supervisor.conf
+RUN chmod +x /app/start.sh
+
+VOLUME ["/app/data", "/app/logs"]
+EXPOSE 80 443
+CMD ["/app/start.sh"]
