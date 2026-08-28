@@ -39,6 +39,7 @@ const LAYOUTS = [
   EIssueLayoutTypes.KANBAN,
   EIssueLayoutTypes.CALENDAR,
   EIssueLayoutTypes.SPREADSHEET,
+  EIssueLayoutTypes.GROUPED_SPREADSHEET,
   EIssueLayoutTypes.GANTT,
 ];
 
@@ -65,9 +66,14 @@ export const HeaderFilters = observer(function HeaderFilters(props: Props) {
   const handleLayoutChange = useCallback(
     (layout: EIssueLayoutTypes) => {
       if (!workspaceSlug || !projectId) return;
-      updateFilters(workspaceSlug, projectId, EIssueFilterType.DISPLAY_FILTERS, { layout: layout });
+      updateFilters(workspaceSlug, projectId, EIssueFilterType.DISPLAY_FILTERS, {
+        layout,
+        ...(layout === EIssueLayoutTypes.GROUPED_SPREADSHEET && {
+          group_by: issueFilters?.displayFilters?.group_by ?? "cycle",
+        }),
+      });
     },
-    [workspaceSlug, projectId, updateFilters]
+    [workspaceSlug, projectId, issueFilters?.displayFilters?.group_by, updateFilters]
   );
 
   const handleDisplayFilters = useCallback(

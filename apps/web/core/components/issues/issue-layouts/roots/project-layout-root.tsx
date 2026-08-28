@@ -22,6 +22,7 @@ import { IssuePeekOverview } from "../../peek-overview";
 import { CalendarLayout } from "../calendar/roots/project-root";
 import { BaseGanttRoot } from "../gantt";
 import { KanBanLayout } from "../kanban/roots/project-root";
+import { ProjectGroupedSpreadsheetLayout } from "../grouped-spreadsheet/roots/project-root";
 import { ListLayout } from "../list/roots/project-root";
 import { ProjectSpreadsheetLayout } from "../spreadsheet/roots/project-root";
 
@@ -37,6 +38,8 @@ function ProjectIssueLayout(props: { activeLayout: EIssueLayoutTypes | undefined
       return <BaseGanttRoot />;
     case EIssueLayoutTypes.SPREADSHEET:
       return <ProjectSpreadsheetLayout />;
+    case EIssueLayoutTypes.GROUPED_SPREADSHEET:
+      return <ProjectGroupedSpreadsheetLayout />;
     default:
       return null;
   }

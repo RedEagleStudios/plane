@@ -58,6 +58,9 @@ export const ISSUE_DISPLAY_FILTERS_BY_LAYOUT: {
   spreadsheet: {
     filters: ["priority", "state", "labels"],
   },
+  grouped_spreadsheet: {
+    filters: ["priority", "state", "labels"],
+  },
   gantt: {
     filters: ["priority", "state", "labels"],
   },
@@ -264,6 +267,18 @@ export const ISSUE_DISPLAY_FILTERS_BY_PAGE: TIssueFiltersToDisplayByPageType = {
           values: ["sub_issue"],
         },
       },
+      grouped_spreadsheet: {
+        display_properties: ISSUE_DISPLAY_PROPERTIES_KEYS,
+        display_filters: {
+          group_by: ["state", "priority", "cycle", "module", "labels", "assignees", "created_by"],
+          order_by: ["sort_order", "-created_at", "-updated_at", "start_date", "-priority", "target_date"],
+          type: ["active", "backlog"],
+        },
+        extra_options: {
+          access: true,
+          values: ["show_empty_groups", "sub_issue"],
+        },
+      },
       gantt_chart: {
         display_properties: ["key", "issue_type"],
         display_filters: {
@@ -350,10 +365,10 @@ export const defaultActivityFilters: TActivityFilters[] = [
 ];
 
 export const filterActivityOnSelectedFilters = (
-  activity: TIssueActivityComment[],
+  activities: TIssueActivityComment[],
   filters: TActivityFilters[]
 ): TIssueActivityComment[] =>
-  activity.filter((activity) => {
+  activities.filter((activity) => {
     if (activity.activity_type === EActivityFilterType.DEFAULT) return true;
     return filters.includes(activity.activity_type as TActivityFilters);
   });
