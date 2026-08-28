@@ -13,6 +13,7 @@
   },
   "scripts": {
     "dev": "tsdown --watch --no-clean",
+    "test": "vitest run",
     "build": "tsdown",
     "check:lint": "oxlint --max-warnings=2 .",
     "check:types": "tsc --noEmit",
@@ -29,6 +30,7 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "tsdown": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
