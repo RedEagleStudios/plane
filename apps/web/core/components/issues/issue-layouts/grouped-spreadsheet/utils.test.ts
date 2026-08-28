@@ -5,7 +5,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { formatEstimateTotal, groupedTableGroupTitle, sumNumericEstimateValues } from "./utils";
+import {
+  buildGroupedTableVirtualRows,
+  formatEstimateTotal,
+  groupedTableGroupTitle,
+  sumNumericEstimateValues,
+} from "./utils";
 
 describe("Grouped Table summaries", () => {
   it("sums numeric estimates while ignoring unset and categorical values", () => {
@@ -24,5 +29,20 @@ describe("Grouped Table summaries", () => {
     expect(groupedTableGroupTitle("module", "None", "None")).toBe("No Module");
     expect(groupedTableGroupTitle("state", "None", "None")).toBe("None");
     expect(groupedTableGroupTitle("cycle", "cycle-id", "Sprint 117")).toBe("Sprint 117");
+  });
+
+  it("flattens expanded groups and emits one pagination sentinel per incomplete group", () => {
+    expect(
+      buildGroupedTableVirtualRows([
+        { id: "current", issueIds: ["one", "two"], totalCount: 3, isExpanded: true },
+        { id: "history", issueIds: ["three"], totalCount: 4, isExpanded: false },
+      ])
+    ).toEqual([
+      { type: "group", key: "group:current", groupId: "current" },
+      { type: "issue", key: "issue:one", groupId: "current", issueId: "one" },
+      { type: "issue", key: "issue:two", groupId: "current", issueId: "two" },
+      { type: "load-more", key: "load-more:current:2", groupId: "current", loadedCount: 2 },
+      { type: "group", key: "group:history", groupId: "history" },
+    ]);
   });
 });

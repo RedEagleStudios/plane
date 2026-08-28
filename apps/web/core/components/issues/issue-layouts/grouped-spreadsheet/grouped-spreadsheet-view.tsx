@@ -4,9 +4,10 @@
  * See the LICENSE file for details.
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { observer } from "mobx-react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ALL_ISSUES, SPREADSHEET_PROPERTY_LIST, SPREADSHEET_SELECT_GROUP } from "@plane/constants";
 import type {
   GroupByColumnTypes,
@@ -20,7 +21,6 @@ import type {
   TIssueMap,
 } from "@plane/types";
 import { EIssueLayoutTypes } from "@plane/types";
-import { Button } from "@plane/propel/button";
 import { MultipleSelectGroup } from "@/components/core/multiple-select";
 import { IssueBulkOperationsRoot } from "@/components/issues/bulk-operations";
 import { QuickAddIssueRoot, SpreadsheetAddIssueButton } from "@/components/issues/issue-layouts/quick-add";
@@ -31,11 +31,25 @@ import { useBulkOperationStatus } from "@/hooks/use-bulk-operation-status";
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
 import { useIssuesStore } from "@/hooks/use-issue-layout-store";
 import { useTableKeyboardNavigation } from "@/hooks/use-table-keyboard-navigation";
+import { usePlatformOS } from "@/hooks/use-platform-os";
 import type { TRenderQuickActions } from "../list/list-view-types";
 import { getDisplayPropertiesCount, getGroupByColumns } from "../utils";
 import { SpreadsheetIssueRow } from "../spreadsheet/issue-row";
 import { SpreadsheetHeader } from "../spreadsheet/spreadsheet-header";
-import { formatEstimateTotal, groupedTableGroupTitle, sumNumericEstimateValues } from "./utils";
+import {
+  buildGroupedTableVirtualRows,
+  formatEstimateTotal,
+  groupedTableGroupTitle,
+  sumNumericEstimateValues,
+} from "./utils";
+
+const GROUPED_TABLE_ROW_HEIGHT = 44;
+const GROUPED_TABLE_OVERSCAN = 4;
+const GROUP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
 
 interface Props {
   displayProperties: IIssueDisplayProperties;
@@ -53,7 +67,7 @@ interface Props {
   showEmptyGroups?: boolean;
   collapsedGroups: TIssueKanbanFilters;
   handleCollapsedGroups: (groupId: string) => void;
-  loadMoreIssues: (groupId?: string) => void;
+  loadMoreIssues: (groupId?: string) => void | Promise<unknown>;
 }
 
 export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(props: Props) {
@@ -79,14 +93,17 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const containerRef = useRef<HTMLTableElement | null>(null);
   const portalRef = useRef<HTMLDivElement | null>(null);
   const isScrolled = useRef(false);
+  const requestedPageKeys = useRef(new Set<string>());
   const isBulkOperationsEnabled = useBulkOperationStatus();
   const handleKeyboardNavigation = useTableKeyboardNavigation();
   const { currentProjectDetails } = useProject();
   const { getCycleById } = useCycle();
   const estimate = useEstimate(currentProjectDetails?.estimate ?? undefined);
   const {
-    issues: { getGroupIssueCount, getIssueLoader },
+    issues: { getGroupIssueCount },
   } = useIssuesStore();
+  const { isMobile } = usePlatformOS();
+  const [mobileExpansionOverrides, setMobileExpansionOverrides] = useState<Record<string, boolean>>({});
 
   const groups = useMemo(
     () =>
@@ -101,24 +118,44 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
 
   const visibleGroups = groups.filter((group) => {
     if (showEmptyGroups) return true;
-    const groupIds = groupBy ? groupedIssueIds[group.id] : groupedIssueIds[ALL_ISSUES];
-    return Array.isArray(groupIds) && groupIds.length > 0;
+    const groupId = groupBy ? group.id : undefined;
+    return (getGroupIssueCount(groupId, undefined, false) ?? 0) > 0;
   });
 
-  const loadedIssueIds = visibleGroups.flatMap((group) => {
-    const groupIds = groupBy ? groupedIssueIds[group.id] : groupedIssueIds[ALL_ISSUES];
-    return Array.isArray(groupIds) ? groupIds : [];
+  const virtualGroups = visibleGroups.map((group, groupIndex) => {
+    const groupId = groupBy ? group.id : undefined;
+    const rawIssueIds = groupBy ? groupedIssueIds[group.id] : groupedIssueIds[ALL_ISSUES];
+    const issueIds = Array.isArray(rawIssueIds) ? rawIssueIds : [];
+    const cycle = groupBy === "cycle" && group.id !== "None" ? getCycleById(group.id) : null;
+    const isPersistedExpanded = !collapsedGroups.group_by.includes(group.id);
+    const isMobileDefaultExpanded =
+      group.id === "None" || cycle?.status?.toLowerCase() === "current" || groupIndex === 0;
+    return {
+      id: group.id,
+      issueIds,
+      totalCount: getGroupIssueCount(groupId, undefined, false) ?? issueIds.length,
+      isExpanded: isMobile
+        ? (mobileExpansionOverrides[group.id] ?? (isPersistedExpanded && isMobileDefaultExpanded))
+        : isPersistedExpanded,
+    };
   });
 
-  const entities = Object.fromEntries(
-    visibleGroups.map((group) => {
-      const groupIds = groupBy ? groupedIssueIds[group.id] : groupedIssueIds[ALL_ISSUES];
-      return [group.id, Array.isArray(groupIds) ? groupIds : []];
-    })
-  );
+  const groupById = new Map<string, IGroupByColumn>(visibleGroups.map((group) => [group.id, group]));
+  const virtualGroupById = new Map(virtualGroups.map((group) => [group.id, group]));
+  const virtualRows = buildGroupedTableVirtualRows(virtualGroups);
+  const loadedIssueIds = virtualGroups.flatMap((group) => group.issueIds);
+  const entities = Object.fromEntries(virtualGroups.map((group) => [group.id, group.issueIds]));
   entities[SPREADSHEET_SELECT_GROUP] = loadedIssueIds;
 
-  const isEstimateEnabled = currentProjectDetails?.estimate !== null;
+  const handleGroupToggle = (groupId: string, isExpanded: boolean) => {
+    if (!isMobile) {
+      handleCollapsedGroups(groupId);
+      return;
+    }
+    setMobileExpansionOverrides((current) => ({ ...current, [groupId]: !isExpanded }));
+  };
+
+  const isEstimateEnabled = currentProjectDetails?.estimate != null;
   const spreadsheetColumnsList = SPREADSHEET_PROPERTY_LIST.filter((property) => {
     if (property === "cycle" && !currentProjectDetails?.cycle_view) return false;
     if (property === "modules" && !currentProjectDetails?.module_view) return false;
@@ -128,6 +165,29 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const ignoreFieldsForCounting: (keyof IIssueDisplayProperties)[] = ["key"];
   if (!isEstimateEnabled) ignoreFieldsForCounting.push("estimate");
   const columnCount = getDisplayPropertiesCount(displayProperties, ignoreFieldsForCounting) + 1;
+
+  const rowVirtualizer = useVirtualizer({
+    count: virtualRows.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => GROUPED_TABLE_ROW_HEIGHT,
+    overscan: GROUPED_TABLE_OVERSCAN,
+    getItemKey: (index) => virtualRows[index]?.key ?? index,
+  });
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom =
+    virtualItems.length > 0 ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
+
+  useEffect(() => {
+    for (const virtualItem of virtualItems) {
+      const row = virtualRows[virtualItem.index];
+      if (row?.type !== "load-more" || requestedPageKeys.current.has(row.key)) continue;
+      requestedPageKeys.current.add(row.key);
+      Promise.resolve(loadMoreIssues(groupBy ? row.groupId : undefined)).catch(() => {
+        requestedPageKeys.current.delete(row.key);
+      });
+    }
+  }, [groupBy, loadMoreIssues, virtualItems, virtualRows]);
 
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
@@ -144,7 +204,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
 
   useEffect(() => {
     const container = containerRef.current;
-    container?.addEventListener("scroll", handleScroll);
+    container?.addEventListener("scroll", handleScroll, { passive: true });
     return () => container?.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
 
@@ -156,8 +216,11 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
       <MultipleSelectGroup containerRef={containerRef} entities={entities} disabled={!isBulkOperationsEnabled}>
         {(selectionHelpers: TSelectionHelper) => (
           <>
-            <div ref={containerRef} className="vertical-scrollbar horizontal-scrollbar scrollbar-lg h-full w-full">
-              <table className="w-full overflow-y-auto bg-surface-1" onKeyDown={handleKeyboardNavigation}>
+            <div
+              ref={containerRef}
+              className="vertical-scrollbar horizontal-scrollbar scrollbar-lg h-full w-full touch-pan-x touch-pan-y overflow-auto"
+            >
+              <table className="w-full min-w-max bg-surface-1" onKeyDown={handleKeyboardNavigation}>
                 <SpreadsheetHeader
                   displayProperties={displayProperties}
                   displayFilters={displayFilters}
@@ -168,102 +231,111 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                   selectionHelpers={selectionHelpers}
                 />
                 <tbody>
-                  {visibleGroups.map((group: IGroupByColumn) => {
-                    const rawIssueIds = groupBy ? groupedIssueIds[group.id] : groupedIssueIds[ALL_ISSUES];
-                    const issueIds = Array.isArray(rawIssueIds) ? rawIssueIds : [];
-                    const groupId = groupBy ? group.id : undefined;
-                    const totalIssueCount = getGroupIssueCount(groupId, undefined, false) ?? issueIds.length;
-                    const canLoadMoreIssues = issueIds.length < totalIssueCount;
-                    const isLoadingMoreIssues = !!getIssueLoader(groupId);
-                    const isExpanded = !collapsedGroups.group_by.includes(group.id);
+                  {paddingTop > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={columnCount} style={{ height: `${paddingTop}px` }} />
+                    </tr>
+                  )}
+                  {virtualItems.map((virtualItem) => {
+                    const row = virtualRows[virtualItem.index];
+                    if (!row) return null;
+
+                    if (row.type === "issue") {
+                      return (
+                        <SpreadsheetIssueRow
+                          key={row.key}
+                          issueId={row.issueId}
+                          displayProperties={displayProperties}
+                          quickActions={quickActions}
+                          canEditProperties={canEditProperties}
+                          nestingLevel={0}
+                          isEstimateEnabled={isEstimateEnabled}
+                          updateIssue={updateIssue}
+                          portalElement={portalRef}
+                          containerRef={containerRef}
+                          isScrolled={isScrolled}
+                          spreadsheetColumnsList={spreadsheetColumnsList}
+                          selectionHelpers={selectionHelpers}
+                          forceRender
+                        />
+                      );
+                    }
+
+                    if (row.type === "load-more") {
+                      return (
+                        <tr key={row.key} aria-live="polite">
+                          <td
+                            colSpan={columnCount}
+                            className="h-11 border-b border-subtle px-page-x text-12 text-tertiary"
+                          >
+                            Loading more work items…
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const group = groupById.get(row.groupId);
+                    const virtualGroup = virtualGroupById.get(row.groupId);
+                    if (!group || !virtualGroup) return null;
+
                     const cycle = groupBy === "cycle" && group.id !== "None" ? getCycleById(group.id) : null;
                     const estimateTotal = sumNumericEstimateValues(
-                      issueIds.map((issueId) => {
+                      virtualGroup.issueIds.map((issueId) => {
                         const estimatePointId = issueMap[issueId]?.estimate_point;
                         return estimatePointId ? estimate.estimatePointById?.(estimatePointId)?.value : null;
                       })
                     );
                     const title = groupedTableGroupTitle(groupBy, group.id, group.name);
                     const startDate = cycle?.start_date
-                      ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(
-                          new Date(cycle.start_date)
-                        )
+                      ? GROUP_DATE_FORMATTER.format(new Date(cycle.start_date))
                       : null;
-                    const endDate = cycle?.end_date
-                      ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(
-                          new Date(cycle.end_date)
-                        )
-                      : null;
+                    const endDate = cycle?.end_date ? GROUP_DATE_FORMATTER.format(new Date(cycle.end_date)) : null;
                     const cycleStatus = cycle?.status?.toLowerCase();
+                    const canLoadMoreIssues = virtualGroup.issueIds.length < virtualGroup.totalCount;
 
                     return (
-                      <Fragment key={group.id}>
-                        <tr className="border-b-[0.5px] border-subtle bg-layer-2">
-                          <td colSpan={columnCount} className="h-11 px-page-x">
-                            <button
-                              type="button"
-                              className="flex h-full w-full items-center gap-2 text-left"
-                              onClick={() => handleCollapsedGroups(group.id)}
-                            >
-                              {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                              {group.icon}
-                              <span className="font-semibold text-primary">{title}</span>
+                      <tr key={row.key} className="border-b-[0.5px] border-subtle bg-layer-2">
+                        <td colSpan={columnCount} className="h-11 px-page-x">
+                          <button
+                            type="button"
+                            className="flex h-full w-full items-center gap-2 text-left"
+                            onClick={() => handleGroupToggle(group.id, virtualGroup.isExpanded)}
+                          >
+                            {virtualGroup.isExpanded ? (
+                              <ChevronDown className="size-4" />
+                            ) : (
+                              <ChevronRight className="size-4" />
+                            )}
+                            {group.icon}
+                            <span className="font-semibold text-primary">{title}</span>
+                            <span className="rounded-full bg-layer-3 px-2 py-0.5 text-11 text-secondary">
+                              {virtualGroup.totalCount}
+                            </span>
+                            {estimateTotal !== null && (
                               <span className="rounded-full bg-layer-3 px-2 py-0.5 text-11 text-secondary">
-                                {totalIssueCount}
+                                ETA: {formatEstimateTotal(estimateTotal)}h{canLoadMoreIssues ? "+" : ""}
                               </span>
-                              {estimateTotal !== null && (
-                                <span className="rounded-full bg-layer-3 px-2 py-0.5 text-11 text-secondary">
-                                  ETA: {formatEstimateTotal(estimateTotal)}h{canLoadMoreIssues ? "+" : ""}
-                                </span>
-                              )}
-                              {startDate && endDate && (
-                                <span className="text-11 text-tertiary">
-                                  {startDate}–{endDate}
-                                </span>
-                              )}
-                              {cycleStatus && (
-                                <span className="rounded-full border border-subtle px-2 py-0.5 text-11 text-tertiary capitalize">
-                                  {cycleStatus}
-                                </span>
-                              )}
-                            </button>
-                          </td>
-                        </tr>
-                        {isExpanded &&
-                          issueIds.map((issueId, issueIndex) => (
-                            <SpreadsheetIssueRow
-                              key={issueId}
-                              issueId={issueId}
-                              displayProperties={displayProperties}
-                              quickActions={quickActions}
-                              canEditProperties={canEditProperties}
-                              nestingLevel={0}
-                              isEstimateEnabled={isEstimateEnabled}
-                              updateIssue={updateIssue}
-                              portalElement={portalRef}
-                              containerRef={containerRef}
-                              isScrolled={isScrolled}
-                              spreadsheetColumnsList={spreadsheetColumnsList}
-                              selectionHelpers={selectionHelpers}
-                              shouldRenderByDefault={issueIndex < 10}
-                            />
-                          ))}
-                        {isExpanded && canLoadMoreIssues && (
-                          <tr>
-                            <td colSpan={columnCount} className="border-b border-subtle p-2 pl-8">
-                              <Button
-                                variant="link"
-                                disabled={isLoadingMoreIssues}
-                                onClick={() => loadMoreIssues(groupId)}
-                              >
-                                {isLoadingMoreIssues ? "Loading..." : "Load more"}
-                              </Button>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
+                            )}
+                            {startDate && endDate && (
+                              <span className="text-11 text-tertiary">
+                                {startDate}–{endDate}
+                              </span>
+                            )}
+                            {cycleStatus && (
+                              <span className="rounded-full border border-subtle px-2 py-0.5 text-11 text-tertiary capitalize">
+                                {cycleStatus}
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
                     );
                   })}
+                  {paddingBottom > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={columnCount} style={{ height: `${paddingBottom}px` }} />
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

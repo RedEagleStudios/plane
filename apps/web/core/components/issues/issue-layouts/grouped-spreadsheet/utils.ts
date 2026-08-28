@@ -6,6 +6,44 @@
 
 import type { TIssueGroupByOptions } from "@plane/types";
 
+export const GROUPED_TABLE_PAGE_SIZE = 20;
+
+export interface GroupedTableVirtualGroup {
+  id: string;
+  issueIds: string[];
+  totalCount: number;
+  isExpanded: boolean;
+}
+
+export type GroupedTableVirtualRow =
+  | { type: "group"; key: string; groupId: string }
+  | { type: "issue"; key: string; groupId: string; issueId: string }
+  | { type: "load-more"; key: string; groupId: string; loadedCount: number };
+
+export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[]): GroupedTableVirtualRow[] {
+  const rows: GroupedTableVirtualRow[] = [];
+
+  for (const group of groups) {
+    rows.push({ type: "group", key: `group:${group.id}`, groupId: group.id });
+    if (!group.isExpanded) continue;
+
+    for (const issueId of group.issueIds) {
+      rows.push({ type: "issue", key: `issue:${issueId}`, groupId: group.id, issueId });
+    }
+
+    if (group.issueIds.length < group.totalCount) {
+      rows.push({
+        type: "load-more",
+        key: `load-more:${group.id}:${group.issueIds.length}`,
+        groupId: group.id,
+        loadedCount: group.issueIds.length,
+      });
+    }
+  }
+
+  return rows;
+}
+
 export function sumNumericEstimateValues(values: (string | number | null | undefined)[]): number | null {
   let total = 0;
   let numericValueCount = 0;

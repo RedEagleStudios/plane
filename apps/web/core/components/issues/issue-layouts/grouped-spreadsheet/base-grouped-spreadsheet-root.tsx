@@ -25,6 +25,7 @@ import { useIssuesActions } from "@/hooks/use-issues-actions";
 import { IssueLayoutHOC } from "../issue-layout-HOC";
 import type { IQuickActionProps, TRenderQuickActions } from "../list/list-view-types";
 import { GroupedSpreadsheetView } from "./grouped-spreadsheet-view";
+import { GROUPED_TABLE_PAGE_SIZE } from "./utils";
 
 export type GroupedSpreadsheetStoreType = EIssuesStoreType.PROJECT | EIssuesStoreType.PROJECT_VIEW;
 
@@ -72,7 +73,7 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
       updateFilters(filterEntityId, EIssueFilterType.DISPLAY_FILTERS, { group_by: "cycle" });
       return;
     }
-    fetchIssues("init-loader", { canGroup: true, perPageCount: 100 }, viewId);
+    fetchIssues("init-loader", { canGroup: true, perPageCount: GROUPED_TABLE_PAGE_SIZE }, viewId);
   }, [displayFilters?.group_by, fetchIssues, filterEntityId, updateFilters, viewId]);
 
   const canEditProperties = useCallback(
