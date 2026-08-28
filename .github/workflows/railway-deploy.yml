@@ -1,0 +1,30 @@
+name: Deploy Plane to Railway
+
+on:
+  push:
+    branches:
+      - re-main
+  workflow_dispatch:
+
+concurrency:
+  group: railway-plane-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli@5.45.7
+
+      - name: Deploy Plane service
+        run: railway up --service Plane --environment production --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
