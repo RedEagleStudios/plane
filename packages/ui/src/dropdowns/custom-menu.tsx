@@ -86,8 +86,8 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
     useCaptureForOutsideClick = false,
   } = props;
 
-  const [referenceElement, setReferenceElement] = React.useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = React.useState<HTMLDivElement | null>(null);
+  const [referenceElement, setReferenceElement] = React.useState<HTMLElement | null>(null);
+  const [popperElement, setPopperElement] = React.useState<HTMLElement | null>(null);
   const [isOpen, setIsOpen] = React.useState(false);
   // refs
   const dropdownRef = React.useRef<HTMLDivElement | null>(null);
@@ -134,15 +134,24 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
     if (closeOnSelect) closeDropdown();
   };
 
-  const handleMenuButtonClick = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+  const toggleMenuButton = () => {
+    if (disabled) return;
+    if (isOpen) closeDropdown();
+    else openDropdown();
+    menuButtonOnClick?.();
+  };
+
+  const handleMenuButtonClick = (e: React.MouseEvent<HTMLElement, MouseEvent>) => {
     e.stopPropagation();
     e.preventDefault();
-    if (isOpen) {
-      closeDropdown();
-    } else {
-      openDropdown();
-    }
-    if (menuButtonOnClick) menuButtonOnClick();
+    toggleMenuButton();
+  };
+
+  const handleMenuButtonKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.stopPropagation();
+    e.preventDefault();
+    toggleMenuButton();
   };
 
   const handleMouseEnter = () => {
@@ -247,18 +256,16 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
       {({ open }) => (
         <>
           {customButton ? (
-            <Menu.Button as={React.Fragment}>
-              <button
-                ref={setReferenceElement}
-                type="button"
-                onClick={handleMenuButtonClick}
-                className={customButtonClassName}
-                tabIndex={customButtonTabIndex}
-                disabled={disabled}
-                aria-label={ariaLabel}
-              >
-                {customButton}
-              </button>
+            <Menu.Button
+              as="div"
+              ref={setReferenceElement}
+              className={cn("inline-flex", customButtonClassName)}
+              onClick={handleMenuButtonClick}
+              onKeyDown={handleMenuButtonKeyDown}
+              role="presentation"
+              tabIndex={-1}
+            >
+              {customButton}
             </Menu.Button>
           ) : (
             <>
