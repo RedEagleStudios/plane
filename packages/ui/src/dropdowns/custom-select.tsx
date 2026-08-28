@@ -42,7 +42,7 @@ function CustomSelect(props: ICustomSelectProps) {
   } = props;
   // states
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   // refs
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -69,6 +69,7 @@ function CustomSelect(props: ICustomSelectProps) {
     <DropdownContext.Provider value={closeDropdown}>
       <Combobox
         as="div"
+        role="presentation"
         ref={dropdownRef}
         tabIndex={tabIndex}
         value={value}
@@ -82,7 +83,7 @@ function CustomSelect(props: ICustomSelectProps) {
       >
         <>
           {customButton ? (
-            <Combobox.Button as={React.Fragment}>
+            <Combobox.Button as="div" className="contents">
               <button
                 ref={setReferenceElement}
                 type="button"
@@ -95,7 +96,7 @@ function CustomSelect(props: ICustomSelectProps) {
               </button>
             </Combobox.Button>
           ) : (
-            <Combobox.Button as={React.Fragment}>
+            <Combobox.Button as="div" className="contents">
               <button
                 ref={setReferenceElement}
                 type="button"
@@ -119,15 +120,18 @@ function CustomSelect(props: ICustomSelectProps) {
         </>
         {isOpen &&
           createPortal(
-            <Combobox.Options as="ul" data-prevent-outside-click>
+            <Combobox.Options
+              as="ul"
+              ref={setPopperElement}
+              style={styles.popper}
+              {...attributes.popper}
+              data-prevent-outside-click
+            >
               <div
                 className={cn(
                   "z-30 my-1 min-w-48 overflow-y-scroll rounded-md border-[0.5px] border-subtle-1 bg-surface-1 px-2 py-2.5 text-11 whitespace-nowrap focus:outline-none",
                   optionsClassName
                 )}
-                ref={setPopperElement}
-                style={styles.popper}
-                {...attributes.popper}
               >
                 <div
                   className={cn("space-y-1 overflow-y-scroll", {
@@ -175,6 +179,10 @@ function Option(props: ICustomSelectItemProps) {
         )
       }
       onClick={handleClick}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        handleClick();
+      }}
     >
       {({ selected }) => (
         <div className="flex w-full items-center justify-between gap-2">

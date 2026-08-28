@@ -46,7 +46,7 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
   const [query, setQuery] = useState("");
 
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   const [isOpen, setIsOpen] = useState(defaultOpen);
   // refs
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +74,7 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
 
   const closeDropdown = () => {
     setIsOpen(false);
-    onClose && onClose();
+    onClose?.();
   };
 
   const handleKeyDown = useDropdownKeyDown(openDropdown, closeDropdown, isOpen);
@@ -88,6 +88,7 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
   return (
     <Combobox
       as="div"
+      role="presentation"
       ref={dropdownRef}
       tabIndex={tabIndex}
       className={cn("relative flex-shrink-0 text-left", className)}
@@ -100,7 +101,7 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
         return (
           <>
             {customButton ? (
-              <Combobox.Button as={React.Fragment}>
+              <Combobox.Button as="div" className="contents">
                 <button
                   ref={setReferenceElement}
                   type="button"
@@ -118,7 +119,7 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
                 </button>
               </Combobox.Button>
             ) : (
-              <Combobox.Button as={React.Fragment}>
+              <Combobox.Button as="div" className="contents">
                 <button
                   ref={setReferenceElement}
                   type="button"
@@ -143,15 +144,19 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
             )}
             {isOpen &&
               createPortal(
-                <Combobox.Options as="ul" data-prevent-outside-click static>
+                <Combobox.Options
+                  as="ul"
+                  ref={setPopperElement}
+                  style={styles.popper}
+                  {...attributes.popper}
+                  data-prevent-outside-click
+                  static
+                >
                   <div
                     className={cn(
                       "z-30 my-1 min-w-48 overflow-y-scroll rounded-md border-[0.5px] border-subtle-1 bg-surface-1 py-2.5 text-11 whitespace-nowrap focus:outline-none",
                       optionsClassName
                     )}
-                    ref={setPopperElement}
-                    style={styles.popper}
-                    {...attributes.popper}
                   >
                     <div className="mx-2 flex items-center gap-1.5 rounded-sm border border-subtle px-2">
                       <SearchIcon className="h-3.5 w-3.5 text-placeholder" strokeWidth={1.5} />
@@ -190,6 +195,10 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
                                 )
                               }
                               onClick={() => {
+                                if (!multiple) closeDropdown();
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return;
                                 if (!multiple) closeDropdown();
                               }}
                               disabled={option.disabled}

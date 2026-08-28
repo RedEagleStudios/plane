@@ -49,7 +49,7 @@ export function Dropdown(props: ISingleSelectDropdown) {
   // states
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   // refs
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   // popper-js refs
@@ -93,8 +93,8 @@ export function Dropdown(props: ISingleSelectDropdown) {
     if (!options) return undefined;
 
     const filteredOptions = queryArray
-      ? (options || []).filter((options) => {
-          const queryString = queryArray.map((query) => options.data[query]).join(" ");
+      ? (options || []).filter((optionItem) => {
+          const queryString = queryArray.map((queryKey) => optionItem.data[queryKey]).join(" ");
           return queryString.toLowerCase().includes(query.toLowerCase());
         })
       : options;
@@ -106,7 +106,7 @@ export function Dropdown(props: ISingleSelectDropdown) {
       (option) => !(value ?? []).includes(option.data[option.value]),
       () => sortByKey && sortByKey.toLowerCase(),
     ]);
-  }, [query, options]);
+  }, [query, options, queryArray, value, sortByKey, firstItem, disableSorting]);
 
   // hooks
   const handleKeyDown = useDropdownKeyPressed(toggleDropdown, handleClose);
@@ -116,6 +116,7 @@ export function Dropdown(props: ISingleSelectDropdown) {
   return (
     <Combobox
       as="div"
+      role="presentation"
       ref={dropdownRef}
       value={value}
       // Headless UI v2 widens a non-multiple Combobox to `T | null`. v1 never emitted
@@ -142,15 +143,19 @@ export function Dropdown(props: ISingleSelectDropdown) {
         disabled={disabled}
       />
       {isOpen && (
-        <Combobox.Options as="ul" className="fixed z-10" static>
+        <Combobox.Options
+          as="ul"
+          className="z-10"
+          ref={setPopperElement}
+          style={styles.popper}
+          {...attributes.popper}
+          static
+        >
           <div
             className={cn(
               "my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2 text-11 shadow-raised-200 focus:outline-none",
               optionsContainerClassName
             )}
-            ref={setPopperElement}
-            style={styles.popper}
-            {...attributes.popper}
           >
             <DropdownOptions
               isOpen={isOpen}
