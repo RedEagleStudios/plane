@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { ListTree } from "lucide-react";
 import {
   ListLayoutIcon,
   BoardLayoutIcon,
@@ -33,6 +34,8 @@ export function IssueLayoutIcon({
       return <CalendarLayoutIcon {...iconProps} />;
     case EIssueLayoutTypes.SPREADSHEET:
       return <SheetLayoutIcon {...iconProps} />;
+    case EIssueLayoutTypes.GROUPED_SPREADSHEET:
+      return <ListTree {...iconProps} />;
     case EIssueLayoutTypes.GANTT:
       return <TimelineLayoutIcon {...iconProps} />;
     default:
