@@ -230,7 +230,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                           </td>
                         </tr>
                         {isExpanded &&
-                          issueIds.map((issueId) => (
+                          issueIds.map((issueId, issueIndex) => (
                             <SpreadsheetIssueRow
                               key={issueId}
                               issueId={issueId}
@@ -245,6 +245,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                               isScrolled={isScrolled}
                               spreadsheetColumnsList={spreadsheetColumnsList}
                               selectionHelpers={selectionHelpers}
+                              shouldRenderByDefault={issueIndex < 10}
                             />
                           ))}
                         {isExpanded && canLoadMoreIssues && (

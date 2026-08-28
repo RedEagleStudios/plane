@@ -26,24 +26,27 @@ import { IssueLayoutHOC } from "../issue-layout-HOC";
 import type { IQuickActionProps, TRenderQuickActions } from "../list/list-view-types";
 import { GroupedSpreadsheetView } from "./grouped-spreadsheet-view";
 
-export type GroupedSpreadsheetStoreType = EIssuesStoreType.PROJECT;
+export type GroupedSpreadsheetStoreType = EIssuesStoreType.PROJECT | EIssuesStoreType.PROJECT_VIEW;
 
 interface Props {
   QuickActions: FC<IQuickActionProps>;
   canEditPropertiesBasedOnProject?: (projectId: string) => boolean;
+  viewId?: string;
 }
 
 export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadsheetRoot(props: Props) {
-  const { QuickActions, canEditPropertiesBasedOnProject } = props;
+  const { QuickActions, canEditPropertiesBasedOnProject, viewId } = props;
   const { workspaceSlug, projectId } = useParams();
   const storeType = useIssueStoreType() as GroupedSpreadsheetStoreType;
-  const { issues, issuesFilter, issueMap } = useIssues(storeType);
+  const { issues, issuesFilter } = useIssues(storeType);
+  const { issueMap } = useIssues();
   const {
     fetchIssues,
     fetchNextIssues,
     quickAddIssue,
     updateIssue,
     removeIssue,
+    removeIssueFromView,
     archiveIssue,
     restoreIssue,
     updateFilters,
@@ -55,6 +58,7 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
   const showEmptyGroups = displayFilters?.show_empty_groups ?? false;
   const collapsedGroups =
     issuesFilter.issueFilters?.kanbanFilters ?? ({ group_by: [], sub_group_by: [] } as TIssueKanbanFilters);
+  const filterEntityId = viewId ?? projectId?.toString();
   const { enableInlineEditing, enableQuickAdd, enableIssueCreation } = issues.viewFlags ?? {};
 
   const isEditingAllowed = allowPermissions(
@@ -63,13 +67,13 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
   );
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!filterEntityId) return;
     if (!displayFilters?.group_by) {
-      updateFilters(projectId.toString(), EIssueFilterType.DISPLAY_FILTERS, { group_by: "cycle" });
+      updateFilters(filterEntityId, EIssueFilterType.DISPLAY_FILTERS, { group_by: "cycle" });
       return;
     }
-    fetchIssues("init-loader", { canGroup: true, perPageCount: 100 });
-  }, [displayFilters?.group_by, fetchIssues, projectId, updateFilters]);
+    fetchIssues("init-loader", { canGroup: true, perPageCount: 100 }, viewId);
+  }, [displayFilters?.group_by, fetchIssues, filterEntityId, updateFilters, viewId]);
 
   const canEditProperties = useCallback(
     (currentProjectId: string | undefined) => {
@@ -84,20 +88,20 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
 
   const handleDisplayFiltersUpdate = useCallback(
     (updatedDisplayFilter: Partial<IIssueDisplayFilterOptions>) => {
-      if (!projectId) return;
-      updateFilters(projectId.toString(), EIssueFilterType.DISPLAY_FILTERS, updatedDisplayFilter);
+      if (!filterEntityId) return;
+      updateFilters(filterEntityId, EIssueFilterType.DISPLAY_FILTERS, updatedDisplayFilter);
     },
-    [projectId, updateFilters]
+    [filterEntityId, updateFilters]
   );
 
   const handleCollapsedGroups = useCallback(
     (groupId: string) => {
-      if (!projectId || !workspaceSlug) return;
+      if (!filterEntityId || !workspaceSlug) return;
       const currentCollapsedGroups = issuesFilter.issueFilters?.kanbanFilters?.group_by ?? [];
       const group_by = currentCollapsedGroups.includes(groupId)
         ? currentCollapsedGroups.filter((value) => value !== groupId)
         : [...currentCollapsedGroups, groupId];
-      updateFilters(projectId.toString(), EIssueFilterType.KANBAN_FILTERS, {
+      updateFilters(filterEntityId, EIssueFilterType.KANBAN_FILTERS, {
         group_by,
         sub_group_by: collapsedGroups.sub_group_by,
       });
@@ -105,7 +109,7 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
     [
       collapsedGroups.sub_group_by,
       issuesFilter.issueFilters?.kanbanFilters?.group_by,
-      projectId,
+      filterEntityId,
       updateFilters,
       workspaceSlug,
     ]
@@ -119,6 +123,7 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
         issue={issue}
         handleDelete={async () => removeIssue(issue.project_id, issue.id)}
         handleUpdate={async (data) => updateIssue?.(issue.project_id, issue.id, data)}
+        handleRemoveFromView={async () => removeIssueFromView?.(issue.project_id, issue.id)}
         handleArchive={async () => archiveIssue?.(issue.project_id, issue.id)}
         handleRestore={async () => restoreIssue?.(issue.project_id, issue.id)}
         portalElement={portalElement}
@@ -126,7 +131,7 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
         placements={placement}
       />
     ),
-    [QuickActions, archiveIssue, canEditProperties, removeIssue, restoreIssue, updateIssue]
+    [QuickActions, archiveIssue, canEditProperties, removeIssue, removeIssueFromView, restoreIssue, updateIssue]
   );
 
   if (!displayFilters?.group_by) return null;
