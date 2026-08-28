@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useState, Fragment, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { TwitterPicker } from "react-color";
 import { Controller, useForm } from "react-hook-form";
 import { usePopper } from "react-popper";
@@ -38,7 +38,7 @@ export function LabelCreate(props: ILabelCreate) {
   const [isCreateToggle, setIsCreateToggle] = useState(false);
   const handleIsCreateToggle = () => setIsCreateToggle(!isCreateToggle);
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   // react hook form
   const {
     handleSubmit,
@@ -81,7 +81,8 @@ export function LabelCreate(props: ILabelCreate) {
 
   return (
     <>
-      <div
+      <button
+        type="button"
         className="relative flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-full border border-subtle p-0.5 px-2 text-11 text-tertiary transition-all hover:bg-surface-2 hover:text-secondary"
         onClick={handleIsCreateToggle}
       >
@@ -89,7 +90,7 @@ export function LabelCreate(props: ILabelCreate) {
           {isCreateToggle ? <CloseIcon className="h-2.5 w-2.5" /> : <PlusIcon className="h-2.5 w-2.5" />}
         </div>
         <div className="flex-shrink-0">{isCreateToggle ? "Cancel" : "New"}</div>
-      </div>
+      </button>
 
       {isCreateToggle && (
         <form className="relative flex items-center gap-x-2 p-1" onSubmit={handleSubmit(handleLabel)}>
@@ -100,7 +101,7 @@ export function LabelCreate(props: ILabelCreate) {
               render={({ field: { value, onChange } }) => (
                 <Popover>
                   <>
-                    <Popover.Button as={Fragment}>
+                    <Popover.Button as="div" className="contents">
                       <button type="button" ref={setReferenceElement} className="grid place-items-center outline-none">
                         {value && value?.trim() !== "" && (
                           <span
@@ -112,14 +113,9 @@ export function LabelCreate(props: ILabelCreate) {
                         )}
                       </button>
                     </Popover.Button>
-                    <Popover.Panel className="fixed z-10">
-                      <div
-                        className="max-w-xs p-2 sm:px-0"
-                        ref={setPopperElement}
-                        style={styles.popper}
-                        {...attributes.popper}
-                      >
-                        <TwitterPicker triangle={"hide"} color={value} onChange={(value) => onChange(value.hex)} />
+                    <Popover.Panel className="z-10" ref={setPopperElement} style={styles.popper} {...attributes.popper}>
+                      <div className="max-w-xs p-2 sm:px-0">
+                        <TwitterPicker triangle={"hide"} color={value} onChange={(color) => onChange(color.hex)} />
                       </div>
                     </Popover.Panel>
                   </>

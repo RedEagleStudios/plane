@@ -45,7 +45,7 @@ export const CycleOptions = observer(function CycleOptions(props: CycleOptionsPr
   const { t } = useTranslation();
   //state hooks
   const [query, setQuery] = useState("");
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // store hooks
   const { workspaceSlug } = useParams();
@@ -56,9 +56,10 @@ export const CycleOptions = observer(function CycleOptions(props: CycleOptionsPr
     if (isOpen) {
       onOpen();
       if (!isMobile) {
-        inputRef.current && inputRef.current.focus();
+        inputRef.current?.focus();
       }
     }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, isMobile]);
 
   // popper-js init
@@ -77,7 +78,7 @@ export const CycleOptions = observer(function CycleOptions(props: CycleOptionsPr
   const cycleIds = (getProjectCycleIds(projectId) ?? [])?.filter((cycleId) => {
     const cycleDetails = getCycleById(cycleId);
     if (currentCycleId && currentCycleId === cycleId) return false;
-    return cycleDetails?.status ? (cycleDetails?.status.toLowerCase() != "completed" ? true : false) : true;
+    return cycleDetails?.status ? cycleDetails.status.toLowerCase() !== "completed" : true;
   });
 
   const onOpen = () => {
@@ -124,13 +125,15 @@ export const CycleOptions = observer(function CycleOptions(props: CycleOptionsPr
     query === "" ? options : options?.filter((o) => o.query.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <Combobox.Options as="ul" className="fixed z-10" static>
-      <div
-        className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none"
-        ref={setPopperElement}
-        style={styles.popper}
-        {...attributes.popper}
-      >
+    <Combobox.Options
+      as="ul"
+      className="z-10"
+      ref={setPopperElement}
+      style={styles.popper}
+      {...attributes.popper}
+      static
+    >
+      <div className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none">
         <div className="flex items-center gap-1.5 rounded-sm border border-subtle bg-surface-2 px-2">
           <SearchIcon className="h-3.5 w-3.5 text-placeholder" strokeWidth={1.5} />
           <Combobox.Input

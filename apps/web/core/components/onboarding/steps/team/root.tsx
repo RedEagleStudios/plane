@@ -93,7 +93,7 @@ const InviteMemberInput = observer(function InviteMemberInput(props: InviteMembe
   } = props;
 
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
 
   const { t } = useTranslation();
 
@@ -202,14 +202,9 @@ const InviteMemberInput = observer(function InviteMemberInput(props: InviteMembe
                   />
                 </Listbox.Button>
 
-                <Listbox.Options as="div">
-                  <div
-                    className="shadow-sm absolute z-10 mt-1 h-fit w-48 space-y-1 rounded-md border border-strong bg-surface-1 p-2 focus:outline-none sm:w-60"
-                    ref={setPopperElement}
-                    style={styles.popper}
-                    {...attributes.popper}
-                  >
-                    {Object.entries(ROLE_DETAILS).map(([key, value]) => (
+                <Listbox.Options as="div" ref={setPopperElement} style={styles.popper} {...attributes.popper}>
+                  <div className="shadow-sm z-10 mt-1 h-fit w-48 space-y-1 rounded-md border border-strong bg-surface-1 p-2 focus:outline-none sm:w-60">
+                    {Object.entries(ROLE_DETAILS).map(([key, roleDetails]) => (
                       <Listbox.Option
                         as="div"
                         key={key}
@@ -223,8 +218,8 @@ const InviteMemberInput = observer(function InviteMemberInput(props: InviteMembe
                         {({ selected }) => (
                           <div className="flex items-center gap-2 p-1 text-wrap">
                             <div className="flex flex-col">
-                              <div className="text-13 font-medium">{t(value.i18n_title)}</div>
-                              <div className="flex text-11 text-tertiary">{t(value.i18n_description)}</div>
+                              <div className="text-13 font-medium">{t(roleDetails.i18n_title)}</div>
+                              <div className="flex text-11 text-tertiary">{t(roleDetails.i18n_description)}</div>
                             </div>
                             {selected && <CheckIcon className="h-4 w-4 shrink-0" />}
                           </div>
@@ -297,13 +292,13 @@ export const InviteTeamStep = observer(function InviteTeamStep(props: Props) {
           role: email.role,
         })),
       })
-      .then(async () => {
+      .then(() => {
         setToast({
           type: TOAST_TYPE.SUCCESS,
           title: "Success!",
           message: "Invitations sent successfully.",
         });
-        await nextStep();
+        return nextStep();
       })
       .catch((err) => {
         setToast({

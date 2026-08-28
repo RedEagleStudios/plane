@@ -49,7 +49,7 @@ export const CalendarOptionsDropdown = observer(function CalendarOptionsDropdown
   const [windowWidth] = useSize();
 
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
 
   const { styles, attributes } = usePopper(referenceElement, popperElement, {
     placement: "auto",
@@ -85,8 +85,6 @@ export const CalendarOptionsDropdown = observer(function CalendarOptionsDropdown
   };
 
   const handleToggleWeekends = () => {
-    const showWeekends = issuesFilterStore.issueFilters?.displayFilters?.calendar?.show_weekends ?? false;
-
     if (!updateFilters) return;
 
     updateFilters(projectId?.toString(), EIssueFilterType.DISPLAY_FILTERS, {
@@ -101,7 +99,7 @@ export const CalendarOptionsDropdown = observer(function CalendarOptionsDropdown
     <Popover className="relative flex items-center">
       {({ open, close: closePopover }) => (
         <>
-          <Popover.Button as={React.Fragment}>
+          <Popover.Button as="div" className="contents">
             <button type="button" ref={setReferenceElement}>
               <div
                 className={`hidden items-center gap-1.5 rounded-sm bg-layer-1 px-2.5 py-1 text-11 outline-none hover:bg-layer-1 md:flex ${
@@ -129,13 +127,8 @@ export const CalendarOptionsDropdown = observer(function CalendarOptionsDropdown
             leaveFrom="opacity-100 translate-y-0"
             leaveTo="opacity-0 translate-y-1"
           >
-            <Popover.Panel className="fixed z-50">
-              <div
-                ref={setPopperElement}
-                style={styles.popper}
-                {...attributes.popper}
-                className="absolute right-0 z-10 mt-1 min-w-[12rem] overflow-hidden rounded-sm border border-subtle bg-surface-1 p-1 shadow-raised-200"
-              >
+            <Popover.Panel className="z-50" ref={setPopperElement} style={styles.popper} {...attributes.popper}>
+              <div className="right-0 z-10 mt-1 min-w-[12rem] overflow-hidden rounded-sm border border-subtle bg-surface-1 p-1 shadow-raised-200">
                 <div>
                   {Object.entries(CALENDAR_LAYOUTS).map(([layout, layoutDetails]) => (
                     <button

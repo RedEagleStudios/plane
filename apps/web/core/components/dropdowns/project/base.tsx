@@ -24,6 +24,11 @@ import type { TProject } from "@plane/types";
 import { DropdownButton } from "../buttons";
 import { BUTTON_VARIANTS_WITH_TEXT } from "../constants";
 import type { TDropdownProps } from "../types";
+const renderProjectIcon = (logoProps: TProject["logo_props"]) => (
+  <span className="grid h-4 w-4 flex-shrink-0 place-items-center">
+    <Logo logo={logoProps} size={14} />
+  </span>
+);
 
 type Props = TDropdownProps & {
   button?: ReactNode;
@@ -78,7 +83,7 @@ export const ProjectDropdownBase = observer(function ProjectDropdownBase(props: 
   const inputRef = useRef<HTMLInputElement | null>(null);
   // popper-js refs
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   // states
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -139,29 +144,27 @@ export const ProjectDropdownBase = observer(function ProjectDropdownBase(props: 
     if (!multiple) handleClose();
   };
 
-  const getDisplayName = (value: string | string[] | null, placeholder: string = "") => {
-    if (Array.isArray(value)) {
-      const firstProject = getProjectById(value[0]);
-      return value.length ? (value.length === 1 ? firstProject?.name : `${value.length} projects`) : placeholder;
+  const getDisplayName = (selectedValue: string | string[] | null, fallbackText: string = "") => {
+    if (Array.isArray(selectedValue)) {
+      const firstProject = getProjectById(selectedValue[0]);
+      return selectedValue.length
+        ? selectedValue.length === 1
+          ? firstProject?.name
+          : `${selectedValue.length} projects`
+        : fallbackText;
     } else {
-      return value ? (getProjectById(value)?.name ?? placeholder) : placeholder;
+      return selectedValue ? (getProjectById(selectedValue)?.name ?? fallbackText) : fallbackText;
     }
   };
 
-  const getProjectIcon = (value: string | string[] | null) => {
-    const renderIcon = (logoProps: TProject["logo_props"]) => (
-      <span className="grid h-4 w-4 flex-shrink-0 place-items-center">
-        <Logo logo={logoProps} size={14} />
-      </span>
-    );
-
-    if (Array.isArray(value)) {
+  const getProjectIcon = (selectedValue: string | string[] | null) => {
+    if (Array.isArray(selectedValue)) {
       return (
         <div className="flex items-center gap-0.5">
-          {value.length > 0 ? (
-            value.map((projectId) => {
+          {selectedValue.length > 0 ? (
+            selectedValue.map((projectId) => {
               const projectDetails = getProjectById(projectId);
-              return projectDetails?.logo_props ? renderIcon(projectDetails.logo_props) : null;
+              return projectDetails?.logo_props ? renderProjectIcon(projectDetails.logo_props) : null;
             })
           ) : (
             <ProjectIcon className="size-3 text-tertiary" />
@@ -169,8 +172,8 @@ export const ProjectDropdownBase = observer(function ProjectDropdownBase(props: 
         </div>
       );
     } else {
-      const projectDetails = getProjectById(value);
-      return projectDetails?.logo_props ? renderIcon(projectDetails.logo_props) : null;
+      const projectDetails = getProjectById(selectedValue);
+      return projectDetails?.logo_props ? renderProjectIcon(projectDetails.logo_props) : null;
     }
   };
 
@@ -222,6 +225,7 @@ export const ProjectDropdownBase = observer(function ProjectDropdownBase(props: 
   return (
     <ComboDropDown
       as="div"
+      role="presentation"
       ref={dropdownRef}
       tabIndex={tabIndex}
       className={cn("h-full", className)}
@@ -234,13 +238,15 @@ export const ProjectDropdownBase = observer(function ProjectDropdownBase(props: 
       multiple={multiple}
     >
       {isOpen && (
-        <Combobox.Options as="ul" className="fixed z-10" static>
-          <div
-            className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none"
-            ref={setPopperElement}
-            style={styles.popper}
-            {...attributes.popper}
-          >
+        <Combobox.Options
+          as="ul"
+          className="z-10"
+          ref={setPopperElement}
+          style={styles.popper}
+          {...attributes.popper}
+          static
+        >
+          <div className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none">
             <div className="flex items-center gap-1.5 rounded-sm border border-subtle bg-surface-2 px-2">
               <SearchIcon className="h-3.5 w-3.5 text-placeholder" strokeWidth={1.5} />
               <Combobox.Input

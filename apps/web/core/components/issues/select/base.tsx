@@ -46,7 +46,7 @@ export const WorkItemLabelSelectBase = observer(function WorkItemLabelSelectBase
     createLabelEnabled = false,
     disabled = false,
     getLabelById,
-    label,
+    label: buttonLabel,
     labelIds,
     onChange,
     onDropdownOpen,
@@ -61,7 +61,7 @@ export const WorkItemLabelSelectBase = observer(function WorkItemLabelSelectBase
   // states
   const [query, setQuery] = useState("");
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   // plane hooks
@@ -153,6 +153,7 @@ export const WorkItemLabelSelectBase = observer(function WorkItemLabelSelectBase
   return (
     <Combobox
       as="div"
+      role="presentation"
       ref={dropdownRef}
       tabIndex={tabIndex}
       value={value}
@@ -168,8 +169,8 @@ export const WorkItemLabelSelectBase = observer(function WorkItemLabelSelectBase
         className={cn("flex h-full cursor-pointer items-center gap-2 text-11", buttonContainerClassName)}
         onClick={handleOnClick}
       >
-        {label ? (
-          label
+        {buttonLabel ? (
+          buttonLabel
         ) : value && value.length > 0 ? (
           <span className={cn("flex h-full items-center justify-center gap-2 text-11", buttonClassName)}>
             <IssueLabelsList
@@ -191,13 +192,15 @@ export const WorkItemLabelSelectBase = observer(function WorkItemLabelSelectBase
         )}
       </button>
       {isDropdownOpen && (
-        <Combobox.Options as="ul" className="fixed z-10" static>
-          <div
-            className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none"
-            ref={setPopperElement}
-            style={styles.popper}
-            {...attributes.popper}
-          >
+        <Combobox.Options
+          as="ul"
+          className="z-10"
+          ref={setPopperElement}
+          style={styles.popper}
+          {...attributes.popper}
+          static
+        >
+          <div className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none">
             <div className="flex items-center gap-1.5 rounded-sm border border-subtle bg-surface-2 px-2">
               <SearchIcon className="h-3.5 w-3.5 text-placeholder" strokeWidth={1.5} />
               <Combobox.Input
@@ -292,7 +295,8 @@ export const WorkItemLabelSelectBase = observer(function WorkItemLabelSelectBase
                 ) : submitting ? (
                   <Loader className="h-3.5 w-3.5 animate-spin" />
                 ) : createLabelEnabled ? (
-                  <p
+                  <button
+                    type="button"
                     onClick={() => {
                       if (!query.length) return;
                       handleAddLabel(query);
@@ -307,7 +311,7 @@ export const WorkItemLabelSelectBase = observer(function WorkItemLabelSelectBase
                     ) : (
                       t("label.create.type")
                     )}
-                  </p>
+                  </button>
                 ) : (
                   <p className="px-1.5 py-1 text-placeholder italic">{t("no_matching_results")}</p>
                 )

@@ -45,6 +45,10 @@ export interface ILabelDropdownProps {
   fullHeight?: boolean;
   label: React.ReactNode;
 }
+const preventPropagation = (event: React.SyntheticEvent) => {
+  event.stopPropagation();
+  event.preventDefault();
+};
 
 export function LabelDropdown(props: ILabelDropdownProps) {
   const {
@@ -63,7 +67,7 @@ export function LabelDropdown(props: ILabelDropdownProps) {
     renderByDefault = true,
     fullWidth = false,
     fullHeight = false,
-    label,
+    label: buttonLabel,
   } = props;
   const { t } = useTranslation();
 
@@ -83,7 +87,7 @@ export function LabelDropdown(props: ILabelDropdownProps) {
 
   // popper-js refs
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
 
   //hooks
   const { fetchProjectLabels, getProjectLabels, createLabel } = useLabel();
@@ -163,8 +167,8 @@ export function LabelDropdown(props: ILabelDropdownProps) {
   const handleAddLabel = async (labelName: string) => {
     if (!projectId) return;
     setSubmitting(true);
-    const label = await createLabel(workspaceSlug, projectId, { name: labelName, color: getRandomLabelColor() });
-    onChange([...value, label.id]);
+    const createdLabel = await createLabel(workspaceSlug, projectId, { name: labelName, color: getRandomLabelColor() });
+    onChange([...value, createdLabel.id]);
     setQuery("");
     setSubmitting(false);
   };
@@ -215,7 +219,7 @@ export function LabelDropdown(props: ILabelDropdownProps) {
         onClick={handleOnClick}
         disabled={disabled}
       >
-        {label}
+        {buttonLabel}
         {!hideDropdownArrow && !disabled && <ChevronDownIcon className="h-3 w-3" aria-hidden="true" />}
       </button>
     ),
@@ -225,22 +229,23 @@ export function LabelDropdown(props: ILabelDropdownProps) {
       fullWidth,
       handleOnClick,
       hideDropdownArrow,
-      label,
+      buttonLabel,
       maxRender,
       value.length,
       setReferenceElement,
     ]
   );
 
-  const preventPropagation = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    e.stopPropagation();
-    e.preventDefault();
-  };
-
   return (
-    <div className={`${fullHeight ? "h-full" : "h-5"}`} onClick={preventPropagation}>
+    <div
+      role="presentation"
+      className={`${fullHeight ? "h-full" : "h-5"}`}
+      onClick={preventPropagation}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
       <ComboDropDown
         as="div"
+        role="presentation"
         ref={dropdownRef}
         className={`h-full w-auto max-w-full flex-shrink-0 text-left ${className}`}
         value={value}
@@ -252,12 +257,16 @@ export function LabelDropdown(props: ILabelDropdownProps) {
         multiple
       >
         {isOpen && (
-          <Combobox.Options as="ul" className="fixed z-10" static>
+          <Combobox.Options
+            as="ul"
+            className="z-10"
+            ref={setPopperElement}
+            style={styles.popper}
+            {...attributes.popper}
+            static
+          >
             <div
               className={`z-10 my-1 h-auto w-48 rounded-sm border border-strong bg-surface-1 px-2 py-2.5 text-caption-sm-regular whitespace-nowrap shadow-raised-200 focus:outline-none ${optionsClassName}`}
-              ref={setPopperElement}
-              style={styles.popper}
-              {...attributes.popper}
             >
               <div className="flex w-full items-center justify-start rounded-sm border border-subtle bg-surface-2 px-2">
                 <SearchIcon className="h-3.5 w-3.5 text-tertiary" />
@@ -309,7 +318,8 @@ export function LabelDropdown(props: ILabelDropdownProps) {
                 ) : submitting ? (
                   <Loader className="h-3.5 w-3.5 animate-spin" />
                 ) : canCreateLabel ? (
-                  <p
+                  <button
+                    type="button"
                     onClick={() => {
                       if (!query.length) return;
                       handleAddLabel(query);
@@ -324,7 +334,7 @@ export function LabelDropdown(props: ILabelDropdownProps) {
                     ) : (
                       t("label.create.type")
                     )}
-                  </p>
+                  </button>
                 ) : (
                   <p className="text-left text-secondary">{t("common.search.no_matching_results")}</p>
                 )}

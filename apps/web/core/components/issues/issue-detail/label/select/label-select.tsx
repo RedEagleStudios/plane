@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { observer } from "mobx-react";
 import { usePopper } from "react-popper";
 import { Loader } from "lucide-react";
@@ -41,7 +41,7 @@ export const IssueLabelSelect = observer(function IssueLabelSelect(props: IIssue
   const { allowPermissions } = useUserPermissions();
   // states
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [query, setQuery] = useState("");
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -92,7 +92,7 @@ export const IssueLabelSelect = observer(function IssueLabelSelect(props: IIssue
 
   const issueLabels = values ?? [];
 
-  const label = <span className="text-body-xs-medium text-placeholder">{t("label.select")}</span>;
+  const buttonLabel = <span className="text-body-xs-medium text-placeholder">{t("label.select")}</span>;
 
   const searchInputKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (query !== "" && e.key === "Escape") {
@@ -109,8 +109,8 @@ export const IssueLabelSelect = observer(function IssueLabelSelect(props: IIssue
 
   const handleAddLabel = async (labelName: string) => {
     setSubmitting(true);
-    const label = await onAddLabel(workspaceSlug, projectId, { name: labelName, color: getRandomLabelColor() });
-    onSelect([...values, label.id]);
+    const createdLabel = await onAddLabel(workspaceSlug, projectId, { name: labelName, color: getRandomLabelColor() });
+    onSelect([...values, createdLabel.id]);
     setQuery("");
     setSubmitting(false);
   };
@@ -126,7 +126,7 @@ export const IssueLabelSelect = observer(function IssueLabelSelect(props: IIssue
         onChange={(value) => onSelect(value)}
         multiple
       >
-        <Combobox.Button as={Fragment}>
+        <Combobox.Button as="div" className="contents">
           <Button
             ref={setReferenceElement}
             type="button"
@@ -135,16 +135,13 @@ export const IssueLabelSelect = observer(function IssueLabelSelect(props: IIssue
             prependIcon={<PlusIcon />}
             onClick={() => !projectLabels && fetchLabels()}
           >
-            {label}
+            {buttonLabel}
           </Button>
         </Combobox.Button>
 
-        <Combobox.Options as="ul" className="fixed z-10">
+        <Combobox.Options as="ul" className="z-10" ref={setPopperElement} style={styles.popper} {...attributes.popper}>
           <div
             className={`z-10 my-1 w-48 rounded-sm border border-strong bg-surface-1 py-2.5 text-11 whitespace-nowrap shadow-raised-200 focus:outline-none`}
-            ref={setPopperElement}
-            style={styles.popper}
-            {...attributes.popper}
           >
             <div className="px-2">
               <div className="flex w-full items-center justify-start rounded-sm border border-subtle bg-surface-2 px-2">
@@ -197,6 +194,13 @@ export const IssueLabelSelect = observer(function IssueLabelSelect(props: IIssue
                     as="li"
                     value={query}
                     onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!query.length) return;
+                      handleAddLabel(query);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
                       e.preventDefault();
                       e.stopPropagation();
                       if (!query.length) return;

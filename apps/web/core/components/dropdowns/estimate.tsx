@@ -76,7 +76,7 @@ export const EstimateDropdown = observer(function EstimateDropdown(props: Props)
   const inputRef = useRef<HTMLInputElement | null>(null);
   // popper-js refs
   const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
+  const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
   // popper-js init
   const { styles, attributes } = usePopper(referenceElement, popperElement, {
     placement: placement ?? "bottom-start",
@@ -119,7 +119,6 @@ export const EstimateDropdown = observer(function EstimateDropdown(props: Props)
             </div>
           ),
         };
-      else undefined;
     })
     .filter((estimatePointDropdownOption) => estimatePointDropdownOption != undefined) as DropdownOptions;
   options?.unshift({
@@ -217,6 +216,7 @@ export const EstimateDropdown = observer(function EstimateDropdown(props: Props)
   return (
     <ComboDropDown
       as="div"
+      role="presentation"
       ref={dropdownRef}
       tabIndex={tabIndex}
       className={cn("h-full w-full", className)}
@@ -228,13 +228,15 @@ export const EstimateDropdown = observer(function EstimateDropdown(props: Props)
       renderByDefault={renderByDefault}
     >
       {isOpen && (
-        <Combobox.Options as="ul" className="fixed z-10" static>
-          <div
-            className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none"
-            ref={setPopperElement}
-            style={styles.popper}
-            {...attributes.popper}
-          >
+        <Combobox.Options
+          as="ul"
+          className="z-10"
+          ref={setPopperElement}
+          style={styles.popper}
+          {...attributes.popper}
+          static
+        >
+          <div className="my-1 w-48 rounded-sm border-[0.5px] border-strong bg-surface-1 px-2 py-2.5 text-11 shadow-raised-200 focus:outline-none">
             <div className="flex items-center gap-1.5 rounded-sm border border-subtle bg-surface-2 px-2">
               <SearchIcon className="h-3.5 w-3.5 text-placeholder" strokeWidth={1.5} />
               <Combobox.Input
