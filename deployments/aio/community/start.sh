@@ -141,6 +141,7 @@ update_env_file(){
     update_env_value "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET_ACCESS_KEY"
     update_env_value "AWS_S3_BUCKET_NAME" "$AWS_S3_BUCKET_NAME"
     update_env_value "AWS_S3_ENDPOINT_URL" "${AWS_S3_ENDPOINT_URL:-https://s3.${AWS_REGION}.amazonaws.com}"
+    update_env_value "AWS_S3_UPLOAD_METHOD" "${AWS_S3_UPLOAD_METHOD:-POST}"
     update_env_value "BUCKET_NAME" "$AWS_S3_BUCKET_NAME"
     update_env_value "USE_MINIO" "0"
 
