@@ -214,10 +214,8 @@ export class ProjectViewStore implements IProjectViewStore {
         );
       });
       return response;
-    } catch {
-      runInAction(() => {
-        delete this.pinnedViewIdsByProject[projectId];
-      });
+    } catch (error) {
+      console.error("Failed to fetch pinned project views", error);
       return undefined;
     }
   };
