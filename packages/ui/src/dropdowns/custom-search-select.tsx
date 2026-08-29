@@ -58,14 +58,6 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
   const filteredOptions =
     query === "" ? options : options?.filter((option) => option.query.toLowerCase().includes(query.toLowerCase()));
 
-  const comboboxProps: any = {
-    value,
-    onChange,
-    disabled,
-  };
-
-  if (multiple) comboboxProps.multiple = true;
-
   const openDropdown = () => {
     setIsOpen(true);
     if (referenceElement) referenceElement.focus();
@@ -93,7 +85,13 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
       tabIndex={tabIndex}
       className={cn("relative flex-shrink-0 text-left", className)}
       onKeyDown={handleKeyDown}
-      {...comboboxProps}
+      value={value}
+      onChange={(selectedValue) => {
+        onChange(selectedValue);
+        if (!multiple) closeDropdown();
+      }}
+      disabled={disabled}
+      multiple={multiple}
     >
       {({ open }: { open: boolean }) => {
         if (open && onOpen) onOpen();
@@ -194,14 +192,17 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
                                   }
                                 )
                               }
+                              disabled={option.disabled}
                               onClick={() => {
-                                if (!multiple) closeDropdown();
+                                if (multiple) return;
+                                if (value !== option.value) onChange(option.value);
+                                closeDropdown();
                               }}
                               onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                if (!multiple) closeDropdown();
+                                if (multiple || (event.key !== "Enter" && event.key !== " ")) return;
+                                if (value !== option.value) onChange(option.value);
+                                closeDropdown();
                               }}
-                              disabled={option.disabled}
                             >
                               {({ selected }) => (
                                 <>
