@@ -5,12 +5,13 @@
  */
 
 import React, { Fragment, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Placement } from "@popperjs/core";
 import { usePopper } from "react-popper";
 // headless ui
 import { Popover, Transition } from "@headlessui/react";
 // ui
-import { Button } from "@plane/propel/button";
+import { getButtonStyling } from "@plane/propel/button";
 
 type Props = {
   children: React.ReactNode;
@@ -37,7 +38,7 @@ export function FiltersDropdown(props: Props) {
     isFiltersApplied = false,
   } = props;
 
-  const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | HTMLDivElement | null>(null);
+  const [referenceElement, setReferenceElement] = useState<HTMLButtonElement | null>(null);
   const [popperElement, setPopperElement] = useState<HTMLElement | null>(null);
 
   const { styles, attributes } = usePopper(referenceElement, popperElement, {
@@ -48,69 +49,58 @@ export function FiltersDropdown(props: Props) {
     <Popover as="div">
       {({ open }) => (
         <>
-          <Popover.Button as="div" className="contents">
-            {menuButton ? (
-              <button type="button" ref={setReferenceElement}>
-                {menuButton}
-              </button>
-            ) : (
-              <div ref={setReferenceElement}>
-                <div className="hidden @4xl:flex">
-                  <Button
-                    disabled={disabled}
-                    variant="secondary"
-                    prependIcon={icon}
-                    tabIndex={tabIndex}
-                    className="relative"
-                    size="lg"
-                  >
-                    <>
-                      <div className={`${open ? "text-primary" : "text-secondary"}`}>
-                        <span>{title}</span>
-                      </div>
-                      {isFiltersApplied && (
-                        <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-accent-primary" />
-                      )}
-                    </>
-                  </Button>
-                </div>
-                <div className="flex @4xl:hidden">
-                  <Button
-                    disabled={disabled}
-                    ref={setReferenceElement}
-                    variant="secondary"
-                    tabIndex={tabIndex}
-                    size="lg"
-                  >
-                    {miniIcon || title}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </Popover.Button>
-          <Transition
-            as={Fragment}
-            enter="transition ease-out duration-200"
-            enterFrom="opacity-0 translate-y-1"
-            enterTo="opacity-100 translate-y-0"
-            leave="transition ease-in duration-150"
-            leaveFrom="opacity-100 translate-y-0"
-            leaveTo="opacity-0 translate-y-1"
-          >
-            {/** translate-y-0 is a hack to create new stacking context. Required for safari  */}
-            <Popover.Panel
-              className="z-10 translate-y-0"
-              ref={setPopperElement}
-              style={styles.popper}
-              {...attributes.popper}
+          {menuButton ? (
+            <Popover.Button
+              type="button"
+              ref={setReferenceElement}
+              className="flex items-center border-0 bg-transparent p-0"
             >
-              <div className="my-1 overflow-hidden rounded-sm border border-subtle bg-surface-1 shadow-raised-100">
-                <div className="flex max-h-[30rem] w-[18.75rem] flex-col overflow-hidden lg:max-h-[37.5rem]">
-                  {children}
-                </div>
-              </div>
-            </Popover.Panel>
-          </Transition>
+              {menuButton}
+            </Popover.Button>
+          ) : (
+            <Popover.Button
+              type="button"
+              ref={setReferenceElement}
+              disabled={disabled}
+              tabIndex={tabIndex}
+              className={`${getButtonStyling("secondary", "lg")} relative`}
+            >
+              <span className="hidden items-center gap-1 @4xl:flex">
+                {icon}
+                <span className={open ? "text-primary" : "text-secondary"}>{title}</span>
+              </span>
+              <span className="flex @4xl:hidden">{miniIcon || title}</span>
+              {isFiltersApplied && (
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-accent-primary" />
+              )}
+            </Popover.Button>
+          )}
+          {typeof document !== "undefined" &&
+            createPortal(
+              <Transition
+                as={Fragment}
+                enter="transition ease-out duration-200"
+                enterFrom="opacity-0 translate-y-1"
+                enterTo="opacity-100 translate-y-0"
+                leave="transition ease-in duration-150"
+                leaveFrom="opacity-100 translate-y-0"
+                leaveTo="opacity-0 translate-y-1"
+              >
+                <Popover.Panel
+                  className="z-40 translate-y-0"
+                  ref={setPopperElement}
+                  style={styles.popper}
+                  {...attributes.popper}
+                >
+                  <div className="my-1 overflow-hidden rounded-sm border border-subtle bg-surface-1 shadow-raised-100">
+                    <div className="flex max-h-[30rem] w-[18.75rem] flex-col overflow-hidden lg:max-h-[37.5rem]">
+                      {children}
+                    </div>
+                  </div>
+                </Popover.Panel>
+              </Transition>,
+              document.body
+            )}
         </>
       )}
     </Popover>
