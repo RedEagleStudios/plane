@@ -4,7 +4,9 @@
  * See the LICENSE file for details.
  */
 
-import axios from "axios";
+import axios, { CancelToken, isCancel } from "axios";
+import type { TFileUploadData } from "@plane/types";
+
 // api service
 import { APIService } from "../api.service";
 
@@ -21,24 +23,33 @@ export class FileUploadService extends APIService {
   }
 
   /**
-   * Uploads a file to the specified signed URL
-   * @param {string} url - The URL to upload the file to
-   * @param {FormData} data - The form data to upload
-   * @returns {Promise<void>} Promise resolving to void
-   * @throws {Error} If the request fails
+   * Uploads a file using the signed request contract returned by the API.
    */
-  async uploadFile(url: string, data: FormData): Promise<void> {
-    this.cancelSource = axios.CancelToken.source();
-    return this.post(url, data, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-      cancelToken: this.cancelSource.token,
-      withCredentials: false,
-    })
+  async uploadFile(uploadData: TFileUploadData, file: File): Promise<void> {
+    this.cancelSource = CancelToken.source();
+
+    const isPutUpload = uploadData.method === "PUT";
+    const data = isPutUpload
+      ? file
+      : (() => {
+          const formData = new FormData();
+          Object.entries(uploadData.fields).forEach(([key, value]) => formData.append(key, value));
+          formData.append("file", file);
+          return formData;
+        })();
+
+    return axios
+      .request({
+        url: uploadData.url,
+        method: uploadData.method,
+        data,
+        headers: isPutUpload ? uploadData.headers : { "Content-Type": "multipart/form-data" },
+        cancelToken: this.cancelSource.token,
+        withCredentials: false,
+      })
       .then((response) => response?.data)
       .catch((error) => {
-        if (axios.isCancel(error)) {
+        if (isCancel(error)) {
           console.log(error.message);
         } else {
           throw error?.response?.data;

@@ -62,8 +62,8 @@ class TestS3StorageSignedURLExpiration:
         clear=True,
     )
     @patch("plane.settings.storage.boto3")
-    def test_generate_presigned_post_uses_default_expiration(self, mock_boto3):
-        """Test that generate_presigned_post uses the configured default expiration"""
+    def test_generate_presigned_upload_defaults_to_post(self, mock_boto3):
+        """The default upload contract remains a presigned POST."""
         # Mock the boto3 client and its response
         mock_s3_client = Mock()
         mock_s3_client.generate_presigned_post.return_value = {
@@ -75,13 +75,14 @@ class TestS3StorageSignedURLExpiration:
         # Create S3Storage instance
         storage = S3Storage()
 
-        # Call generate_presigned_post without explicit expiration
-        storage.generate_presigned_post("test-object", "image/png", 1024)
+        # Generate upload credentials without an explicit expiration
+        result = storage.generate_presigned_upload("test-object", "image/png", 1024)
 
         # Assert that the boto3 method was called with the default expiration (3600)
         mock_s3_client.generate_presigned_post.assert_called_once()
         call_kwargs = mock_s3_client.generate_presigned_post.call_args[1]
         assert call_kwargs["ExpiresIn"] == 3600
+        assert result["method"] == "POST"
 
     @patch.dict(
         os.environ,
@@ -95,8 +96,8 @@ class TestS3StorageSignedURLExpiration:
         clear=True,
     )
     @patch("plane.settings.storage.boto3")
-    def test_generate_presigned_post_uses_custom_expiration(self, mock_boto3):
-        """Test that generate_presigned_post uses custom expiration from env variable"""
+    def test_generate_presigned_upload_uses_custom_expiration(self, mock_boto3):
+        """The configured expiration applies to presigned uploads."""
         # Mock the boto3 client and its response
         mock_s3_client = Mock()
         mock_s3_client.generate_presigned_post.return_value = {
@@ -108,13 +109,51 @@ class TestS3StorageSignedURLExpiration:
         # Create S3Storage instance with SIGNED_URL_EXPIRATION=60
         storage = S3Storage()
 
-        # Call generate_presigned_post without explicit expiration
-        storage.generate_presigned_post("test-object", "image/png", 1024)
+        # Generate upload credentials without an explicit expiration
+        storage.generate_presigned_upload("test-object", "image/png", 1024)
 
         # Assert that the boto3 method was called with custom expiration (60)
         mock_s3_client.generate_presigned_post.assert_called_once()
         call_kwargs = mock_s3_client.generate_presigned_post.call_args[1]
         assert call_kwargs["ExpiresIn"] == 60
+
+    @patch.dict(
+        os.environ,
+        {
+            "AWS_ACCESS_KEY_ID": "test-key",
+            "AWS_SECRET_ACCESS_KEY": "test-secret",
+            "AWS_S3_BUCKET_NAME": "test-bucket",
+            "AWS_REGION": "auto",
+            "AWS_S3_UPLOAD_METHOD": "PUT",
+        },
+        clear=True,
+    )
+    @patch("plane.settings.storage.boto3")
+    def test_generate_presigned_upload_supports_put(self, mock_boto3):
+        """PUT uploads sign the validated content type and size."""
+        mock_s3_client = Mock()
+        mock_s3_client.generate_presigned_url.return_value = "https://test-url.com"
+        mock_boto3.client.return_value = mock_s3_client
+
+        storage = S3Storage()
+        result = storage.generate_presigned_upload("test-object", "image/png", 1024)
+
+        mock_s3_client.generate_presigned_url.assert_called_once_with(
+            "put_object",
+            Params={
+                "Bucket": "test-bucket",
+                "Key": "test-object",
+                "ContentType": "image/png",
+                "ContentLength": 1024,
+            },
+            ExpiresIn=3600,
+            HttpMethod="PUT",
+        )
+        assert result == {
+            "url": "https://test-url.com",
+            "method": "PUT",
+            "headers": {"Content-Type": "image/png"},
+        }
 
     @patch.dict(
         os.environ,

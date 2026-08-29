@@ -35,6 +35,9 @@ class S3Storage(S3Boto3Storage):
         self.aws_s3_endpoint_url = os.environ.get("AWS_S3_ENDPOINT_URL") or os.environ.get("MINIO_ENDPOINT_URL")
         # Use the SIGNED_URL_EXPIRATION environment variable for the expiration time (default: 3600 seconds)
         self.signed_url_expiration = int(os.environ.get("SIGNED_URL_EXPIRATION", "3600"))
+        self.aws_s3_upload_method = os.environ.get("AWS_S3_UPLOAD_METHOD", "POST").upper()
+        if self.aws_s3_upload_method not in {"POST", "PUT"}:
+            raise ValueError("AWS_S3_UPLOAD_METHOD must be either POST or PUT")
 
         if os.environ.get("USE_MINIO") == "1":
             # Determine protocol based on environment variable
@@ -62,28 +65,48 @@ class S3Storage(S3Boto3Storage):
                 config=boto3.session.Config(signature_version="s3v4"),
             )
 
-    def generate_presigned_post(self, object_name, file_type, file_size, expiration=None):
-        """Generate a presigned URL to upload an S3 object"""
+    def generate_presigned_upload(self, object_name, file_type, file_size, expiration=None):
+        """Generate credentials for uploading an S3 object."""
         if expiration is None:
             expiration = self.signed_url_expiration
-        fields = {"Content-Type": file_type}
 
+        if self.aws_s3_upload_method == "PUT":
+            try:
+                url = self.s3_client.generate_presigned_url(
+                    "put_object",
+                    Params={
+                        "Bucket": self.aws_storage_bucket_name,
+                        "Key": object_name,
+                        "ContentType": file_type,
+                        "ContentLength": file_size,
+                    },
+                    ExpiresIn=expiration,
+                    HttpMethod="PUT",
+                )
+            except ClientError as error:
+                log_exception(error)
+                return None
+
+            return {
+                "url": url,
+                "method": "PUT",
+                "headers": {"Content-Type": file_type},
+            }
+
+        fields = {"Content-Type": file_type}
         conditions = [
             {"bucket": self.aws_storage_bucket_name},
             ["content-length-range", 1, file_size],
             {"Content-Type": file_type},
         ]
 
-        # Add condition for the object name (key)
         if object_name.startswith("${filename}"):
             conditions.append(["starts-with", "$key", object_name[: -len("${filename}")]])
         else:
             fields["key"] = object_name
             conditions.append({"key": object_name})
 
-        # Generate the presigned POST URL
         try:
-            # Generate a presigned URL for the S3 object
             response = self.s3_client.generate_presigned_post(
                 Bucket=self.aws_storage_bucket_name,
                 Key=object_name,
@@ -91,11 +114,11 @@ class S3Storage(S3Boto3Storage):
                 Conditions=conditions,
                 ExpiresIn=expiration,
             )
-        # Handle errors
-        except ClientError as e:
-            print(f"Error generating presigned POST URL: {e}")
+        except ClientError as error:
+            log_exception(error)
             return None
 
+        response["method"] = "POST"
         return response
 
     def _get_content_disposition(self, disposition, filename=None):
