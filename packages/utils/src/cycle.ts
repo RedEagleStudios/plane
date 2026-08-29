@@ -21,7 +21,7 @@ import { satisfiesDateFilter } from "./filter";
 export const orderCycles = (cycles: ICycle[], sortByManual: boolean): ICycle[] => {
   if (cycles.length === 0) return [];
 
-  const acceptedStatuses = ["current", "upcoming", "draft"];
+  const acceptedStatuses = new Set(["current", "upcoming", "draft"]);
   const STATUS_ORDER: {
     [key: string]: number;
   } = {
@@ -30,7 +30,7 @@ export const orderCycles = (cycles: ICycle[], sortByManual: boolean): ICycle[] =
     draft: 3,
   };
 
-  let filteredCycles = cycles.filter((c) => acceptedStatuses.includes(c.status?.toLowerCase() ?? ""));
+  let filteredCycles = cycles.filter((c) => acceptedStatuses.has(c.status?.toLowerCase() ?? ""));
   if (sortByManual) filteredCycles = sortBy(filteredCycles, [(c) => c.sort_order]);
   else
     filteredCycles = sortBy(filteredCycles, [
@@ -40,6 +40,13 @@ export const orderCycles = (cycles: ICycle[], sortByManual: boolean): ICycle[] =
 
   return filteredCycles;
 };
+
+/**
+ * Orders completed cycles from most recently ended to oldest.
+ * Cycles without dates are placed last.
+ */
+export const orderCompletedCycles = <T extends Pick<ICycle, "end_date" | "start_date">>(cycles: T[]): T[] =>
+  orderBy(cycles, [(cycle) => cycle.end_date ?? "", (cycle) => cycle.start_date ?? ""], ["desc", "desc"]);
 
 /**
  * Filters cycles based on provided filter criteria
@@ -81,15 +88,15 @@ const scope = (p: any, isTypeIssue: boolean) => (isTypeIssue ? p.total_issues : 
 /**
  * Calculates the ideal progress value
  * @param {string} date - Current date
- * @param {number} scope - Total scope
+ * @param {number} totalScope - Total scope
  * @param {ICycle} cycle - Cycle data
  * @returns {number} Ideal progress value
  */
-const ideal = (date: string, scope: number, cycle: ICycle) =>
+const ideal = (date: string, totalScope: number, cycle: ICycle) =>
   Math.floor(
     ((findTotalDaysInRange(date, cycle.end_date) || 0) /
       (findTotalDaysInRange(cycle.start_date, cycle.end_date) || 0)) *
-      scope
+      totalScope
   );
 
 /**
