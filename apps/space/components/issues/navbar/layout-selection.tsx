@@ -50,20 +50,23 @@ export const IssuesLayoutSelection = observer(function IssuesLayoutSelection(pro
   return (
     <div className="flex items-center gap-1 rounded-sm bg-layer-2 p-1">
       {SITES_ISSUE_LAYOUTS.map((layout) => {
-        if (!layoutOptions[layout.key]) return;
+        if (!Object.prototype.hasOwnProperty.call(layoutOptions, layout.key)) return null;
+        // The runtime ownership check narrows the shared layout catalog to layouts supported by Space.
+        const layoutKey = layout.key as TIssueLayout;
+        if (!layoutOptions[layoutKey]) return null;
 
         return (
-          <Tooltip key={layout.key} tooltipContent={t(layout.titleTranslationKey)}>
+          <Tooltip key={layoutKey} tooltipContent={t(layout.titleTranslationKey)}>
             <button
               type="button"
               className={`group grid h-[22px] w-7 place-items-center overflow-hidden rounded-sm bg-layer-transparent transition-all hover:bg-layer-transparent-hover ${
-                activeLayout == layout.key ? "bg-layer-transparent-active hover:bg-layer-transparent-selected" : ""
+                activeLayout == layoutKey ? "bg-layer-transparent-active hover:bg-layer-transparent-selected" : ""
               }`}
-              onClick={() => handleCurrentBoardView(layout.key)}
+              onClick={() => handleCurrentBoardView(layoutKey)}
             >
               <IssueLayoutIcon
-                layout={layout.key}
-                className={`size-3.5 ${activeLayout == layout.key ? "text-primary" : "text-secondary"}`}
+                layout={layoutKey}
+                className={`size-3.5 ${activeLayout == layoutKey ? "text-primary" : "text-secondary"}`}
               />
             </button>
           </Tooltip>
