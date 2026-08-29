@@ -144,6 +144,7 @@ export function CustomSearchSelect(props: ICustomSearchSelectProps) {
               createPortal(
                 <Combobox.Options
                   as="ul"
+                  className="z-40"
                   ref={setPopperElement}
                   style={styles.popper}
                   {...attributes.popper}

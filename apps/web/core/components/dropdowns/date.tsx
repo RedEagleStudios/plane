@@ -184,6 +184,7 @@ export const DateDropdown = observer(function DateDropdown(props: Props) {
         createPortal(
           <Combobox.Options
             as="ul"
+            className="z-30"
             ref={setPopperElement}
             style={styles.popper}
             {...attributes.popper}
