@@ -20,6 +20,16 @@ urlpatterns = [
         name="project-view",
     ),
     path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/views/pinned/",
+        IssueViewViewSet.as_view({"get": "list_pinned"}),
+        name="project-pinned-views",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/views/<uuid:pk>/pin/",
+        IssueViewViewSet.as_view({"patch": "update_pin"}),
+        name="project-view-pin",
+    ),
+    path(
         "workspaces/<str:slug>/projects/<uuid:project_id>/views/<uuid:pk>/",
         IssueViewViewSet.as_view(
             {

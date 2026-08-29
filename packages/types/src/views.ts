@@ -36,6 +36,7 @@ export interface IProjectView {
   workspace: string;
   logo_props: TLogoProps | undefined;
   is_locked: boolean;
+  is_pinned: boolean;
   anchor?: string;
   owned_by: string;
 }

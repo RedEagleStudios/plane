@@ -31,6 +31,21 @@ export class ViewService extends APIService {
       });
   }
 
+  async updateViewPin(
+    workspaceSlug: string,
+    projectId: string,
+    viewId: string,
+    isPinned: boolean
+  ): Promise<IProjectView> {
+    return this.patch(`/api/workspaces/${workspaceSlug}/projects/${projectId}/views/${viewId}/pin/`, {
+      is_pinned: isPinned,
+    })
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
   async deleteView(workspaceSlug: string, projectId: string, viewId: string): Promise<any> {
     return this.delete(`/api/workspaces/${workspaceSlug}/projects/${projectId}/views/${viewId}/`)
       .then((response) => response?.data)
@@ -41,6 +56,14 @@ export class ViewService extends APIService {
 
   async getViews(workspaceSlug: string, projectId: string): Promise<IProjectView[]> {
     return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/views/`)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async getPinnedViews(workspaceSlug: string, projectId: string): Promise<IProjectView[]> {
+    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/views/pinned/`)
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;

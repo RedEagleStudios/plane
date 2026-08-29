@@ -7,11 +7,14 @@ from typing import Dict, Any, Tuple, Optional, List, Union
 
 # Django imports
 from django.db.models import (
+    Aggregate,
     Count,
     F,
+    FloatField,
     QuerySet,
-    Aggregate,
+    Sum,
 )
+from django.db.models.functions import Cast
 
 from plane.db.models import Issue
 from rest_framework.exceptions import ValidationError
@@ -34,11 +37,13 @@ x_axis_mapper = {
 }
 
 
-def get_y_axis_filter(y_axis: str) -> Dict[str, Any]:
-    filter_mapping = {
-        "WORK_ITEM_COUNT": {"id": F("id")},
-    }
-    return filter_mapping.get(y_axis, {})
+def get_y_axis_aggregate(y_axis: str) -> Aggregate:
+    if y_axis in {"WORK_ITEM_COUNT", "EPIC_WORK_ITEM_COUNT"}:
+        return Count("id", distinct=True)
+    if y_axis == "ESTIMATE_POINT_COUNT":
+        return Sum(Cast("estimate_point__value", FloatField()), default=0)
+
+    raise ValidationError(f"Invalid y_axis metric: {y_axis}")
 
 
 def get_x_axis_field() -> Dict[str, Tuple[str, str, Optional[Dict[str, Any]]]]:
@@ -98,16 +103,6 @@ def process_grouped_data(
     return list(response.values()), schema
 
 
-def build_number_chart_response(
-    queryset: QuerySet[Issue],
-    y_axis_filter: Dict[str, Any],
-    y_axis: str,
-    aggregate_func: Aggregate,
-) -> List[Dict[str, Any]]:
-    count = queryset.filter(**y_axis_filter).aggregate(total=aggregate_func).get("total", 0)
-    return [{"key": y_axis, "name": y_axis, "count": count}]
-
-
 def build_grouped_chart_response(
     queryset: QuerySet[Issue],
     id_field: str,
@@ -153,8 +148,8 @@ def build_simple_chart_response(
 def build_analytics_chart(
     queryset: QuerySet[Issue],
     x_axis: str,
+    y_axis: str,
     group_by: Optional[str] = None,
-    date_filter: Optional[str] = None,
 ) -> Dict[str, Union[List[Dict[str, Any]], Dict[str, str]]]:
     # Validate x_axis
     if x_axis not in x_axis_mapper:
@@ -176,7 +171,7 @@ def build_analytics_chart(
     if group_additional_filter or {}:
         queryset = queryset.filter(**group_additional_filter)
 
-    aggregate_func = Count("id", distinct=True)
+    aggregate_func = get_y_axis_aggregate(y_axis)
 
     if group_field:
         response, schema = build_grouped_chart_response(

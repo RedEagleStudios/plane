@@ -18,7 +18,8 @@ import { useTranslation } from "@plane/i18n";
 import { Button } from "@plane/propel/button";
 import { BarChart } from "@plane/propel/charts/bar-chart";
 import { EmptyStateCompact } from "@plane/propel/empty-state";
-import type { TBarItem, TChart, TChartDatum, ChartXAxisProperty, ChartYAxisMetric } from "@plane/types";
+import type { TBarItem, TChart, TChartDatum, ChartXAxisProperty } from "@plane/types";
+import { ChartYAxisMetric } from "@plane/types";
 // plane web components
 import { generateExtendedColors, parseChartData } from "@/components/chart/utils";
 // hooks
@@ -95,7 +96,7 @@ const PriorityChart = observer(function PriorityChart(props: Props) {
       parsedBars = [
         {
           key: "count",
-          label: "Count",
+          label: ANALYTICS_Y_AXIS_VALUES.find((item) => item.value === y_axis)?.label ?? y_axis,
           stackId: "bar-one",
           fill: (payload) => generateBarColor(payload.key, { x_axis, y_axis, group_by }, baseColors, workspaceStates),
           textClassName: "",
@@ -163,18 +164,18 @@ const PriorityChart = observer(function PriorityChart(props: Props) {
       },
       {
         accessorKey: "count",
-        header: () => <div className="text-right">Count</div>,
+        header: () => <div className="text-right">{yAxisLabel}</div>,
         cell: ({ row }) => <div className="text-right">{row.original.count}</div>,
         meta: {
           export: {
-            key: "Count",
+            key: yAxisLabel,
             value: (row) => row.original.count,
-            label: "Count",
+            label: yAxisLabel,
           },
         },
       },
     ],
-    [xAxisLabel]
+    [xAxisLabel, yAxisLabel]
   );
 
   const columns: ColumnDef<TChartDatum>[] = useMemo(
@@ -216,7 +217,10 @@ const PriorityChart = observer(function PriorityChart(props: Props) {
             }}
             yAxis={{
               key: "count",
-              label: t("common.no_of", { entity: yAxisLabel.replace("_", " ") }),
+              label:
+                y_axis === ChartYAxisMetric.ESTIMATE_POINT_COUNT
+                  ? yAxisLabel
+                  : t("common.no_of", { entity: yAxisLabel.replace("_", " ") }),
               offset: -60,
               dx: -26,
             }}

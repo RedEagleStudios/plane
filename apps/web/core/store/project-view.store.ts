@@ -23,16 +23,19 @@ export interface IProjectViewStore {
   fetchedMap: Record<string, boolean>;
   // observables
   viewMap: Record<string, IProjectView>;
+  pinnedViewIdsByProject: Record<string, string[] | undefined>;
   filters: TViewFilters;
   // computed
   projectViewIds: string[] | null;
   // computed actions
   getProjectViews: (projectId: string) => IProjectView[] | undefined;
   getFilteredProjectViews: (projectId: string) => IProjectView[] | undefined;
+  getPinnedViews: (projectId: string) => IProjectView[] | undefined;
   getViewById: (viewId: string) => IProjectView;
   // fetch actions
   fetchViews: (workspaceSlug: string, projectId: string) => Promise<undefined | IProjectView[]>;
   fetchViewDetails: (workspaceSlug: string, projectId: string, viewId: string) => Promise<IProjectView>;
+  fetchPinnedViews: (workspaceSlug: string, projectId: string) => Promise<undefined | IProjectView[]>;
   // CRUD actions
   createView: (workspaceSlug: string, projectId: string, data: Partial<IProjectView>) => Promise<IProjectView>;
   updateView: (
@@ -41,6 +44,7 @@ export interface IProjectViewStore {
     viewId: string,
     data: Partial<IProjectView>
   ) => Promise<IProjectView>;
+  updateViewPin: (workspaceSlug: string, projectId: string, viewId: string, isPinned: boolean) => Promise<IProjectView>;
   deleteView: (workspaceSlug: string, projectId: string, viewId: string) => Promise<any>;
   updateFilters: <T extends keyof TViewFilters>(filterKey: T, filterValue: TViewFilters[T]) => void;
   clearAllFilters: () => void;
@@ -53,6 +57,7 @@ export class ProjectViewStore implements IProjectViewStore {
   // observables
   loader: boolean = false;
   viewMap: Record<string, IProjectView> = {};
+  pinnedViewIdsByProject: Record<string, string[] | undefined> = {};
   //loaders
   fetchedMap: Record<string, boolean> = {};
   filters: TViewFilters = { searchQuery: "", sortBy: "desc", sortKey: "updated_at" };
@@ -67,16 +72,19 @@ export class ProjectViewStore implements IProjectViewStore {
       loader: observable.ref,
       viewMap: observable,
       fetchedMap: observable,
+      pinnedViewIdsByProject: observable,
       filters: observable,
       // computed
       projectViewIds: computed,
       // fetch actions
       fetchViews: action,
       fetchViewDetails: action,
+      fetchPinnedViews: action,
       // CRUD actions
       createView: action,
       updateView: action,
       deleteView: action,
+      updateViewPin: action,
       // actions
       updateFilters: action,
       clearAllFilters: action,
@@ -91,6 +99,7 @@ export class ProjectViewStore implements IProjectViewStore {
 
     this.createView = this.createView.bind(this);
     this.updateView = this.updateView.bind(this);
+    this.updateViewPin = this.updateViewPin.bind(this);
   }
 
   /**
@@ -112,6 +121,13 @@ export class ProjectViewStore implements IProjectViewStore {
     filteredViews = orderViews(filteredViews, this.filters.sortKey, this.filters.sortBy);
 
     return filteredViews ?? undefined;
+  });
+
+  getPinnedViews = computedFn((projectId: string) => {
+    const viewIds = this.pinnedViewIdsByProject[projectId];
+    if (viewIds === undefined) return undefined;
+
+    return viewIds.map((viewId) => this.viewMap[viewId]).filter((view) => view !== undefined);
   });
   /**
    * returns viewsIds of issues
@@ -175,8 +191,33 @@ export class ProjectViewStore implements IProjectViewStore {
         });
         return response;
       });
-    } catch (_error) {
+    } catch {
       this.loader = false;
+      return undefined;
+    }
+  };
+
+  fetchPinnedViews = async (workspaceSlug: string, projectId: string) => {
+    if (this.pinnedViewIdsByProject[projectId] !== undefined) return this.getPinnedViews(projectId);
+    set(this.pinnedViewIdsByProject, projectId, []);
+    try {
+      const response = await this.viewService.getPinnedViews(workspaceSlug, projectId);
+      runInAction(() => {
+        this.pinnedViewIdsByProject[projectId]?.forEach((viewId) => {
+          if (this.viewMap[viewId]) set(this.viewMap, [viewId, "is_pinned"], false);
+        });
+        response.forEach((view) => set(this.viewMap, [view.id], view));
+        set(
+          this.pinnedViewIdsByProject,
+          projectId,
+          response.map((view) => view.id)
+        );
+      });
+      return response;
+    } catch {
+      runInAction(() => {
+        delete this.pinnedViewIdsByProject[projectId];
+      });
       return undefined;
     }
   };
@@ -238,6 +279,25 @@ export class ProjectViewStore implements IProjectViewStore {
     return response;
   }
 
+  async updateViewPin(
+    workspaceSlug: string,
+    projectId: string,
+    viewId: string,
+    isPinned: boolean
+  ): Promise<IProjectView> {
+    const response = await this.viewService.updateViewPin(workspaceSlug, projectId, viewId, isPinned);
+    runInAction(() => {
+      set(this.viewMap, [viewId], response);
+      const currentIds = this.pinnedViewIdsByProject[projectId] ?? [];
+      set(
+        this.pinnedViewIdsByProject,
+        projectId,
+        isPinned ? [...new Set([...currentIds, viewId])] : currentIds.filter((id) => id !== viewId)
+      );
+    });
+    return response;
+  }
+
   /**
    * Deletes a view and removes it from the viewMap object
    * @param workspaceSlug
@@ -246,11 +306,15 @@ export class ProjectViewStore implements IProjectViewStore {
    * @returns
    */
   deleteView = async (workspaceSlug: string, projectId: string, viewId: string): Promise<any> => {
-    await this.viewService.deleteView(workspaceSlug, projectId, viewId).then(() => {
-      runInAction(() => {
-        delete this.viewMap[viewId];
-        if (this.rootStore.favorite.entityMap[viewId]) this.rootStore.favorite.removeFavoriteFromStore(viewId);
-      });
+    await this.viewService.deleteView(workspaceSlug, projectId, viewId);
+    runInAction(() => {
+      delete this.viewMap[viewId];
+      set(
+        this.pinnedViewIdsByProject,
+        projectId,
+        (this.pinnedViewIdsByProject[projectId] ?? []).filter((id) => id !== viewId)
+      );
+      if (this.rootStore.favorite.entityMap[viewId]) this.rootStore.favorite.removeFavoriteFromStore(viewId);
     });
   };
 

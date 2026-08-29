@@ -52,10 +52,7 @@ export const AnalyticsSelectParams = observer(function AnalyticsSelectParams(pro
                 onChange(val);
               }}
               options={ANALYTICS_Y_AXIS_VALUES}
-              hiddenOptions={[
-                ChartYAxisMetric.ESTIMATE_POINT_COUNT,
-                isEpic ? ChartYAxisMetric.WORK_ITEM_COUNT : ChartYAxisMetric.EPIC_WORK_ITEM_COUNT,
-              ]}
+              hiddenOptions={[isEpic ? ChartYAxisMetric.WORK_ITEM_COUNT : ChartYAxisMetric.EPIC_WORK_ITEM_COUNT]}
             />
           )}
         />

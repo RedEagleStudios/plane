@@ -288,6 +288,7 @@ class AdvanceAnalyticsChartEndpoint(AdvanceAnalyticsBaseView):
         type = request.GET.get("type", "projects")
         group_by = request.GET.get("group_by", None)
         x_axis = request.GET.get("x_axis", "PRIORITY")
+        y_axis = request.GET.get("y_axis", "WORK_ITEM_COUNT")
 
         if type == "projects":
             return Response(self.project_chart(), status=status.HTTP_200_OK)
@@ -305,7 +306,7 @@ class AdvanceAnalyticsChartEndpoint(AdvanceAnalyticsBaseView):
                 queryset = queryset.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
 
             return Response(
-                build_analytics_chart(queryset, x_axis, group_by),
+                build_analytics_chart(queryset, x_axis, y_axis, group_by),
                 status=status.HTTP_200_OK,
             )
 

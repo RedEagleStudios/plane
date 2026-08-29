@@ -6,12 +6,13 @@
 
 import { useState } from "react";
 import { observer } from "mobx-react";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Pin, PinOff } from "lucide-react";
 // types
 import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
 import { IconButton } from "@plane/propel/icon-button";
 import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 import type { IProjectView } from "@plane/types";
+import { EViewAccess } from "@plane/types";
 // ui
 import type { TContextMenuItem } from "@plane/ui";
 import { ContextMenu, CustomMenu } from "@plane/ui";
@@ -20,6 +21,7 @@ import { copyUrlToClipboard, cn } from "@plane/utils";
 import { useViewMenuItems } from "@/components/common/quick-actions-helper";
 // hooks
 import { useUser, useUserPermissions } from "@/hooks/store/user";
+import { useProjectView } from "@/hooks/store/use-project-view";
 import { useViewPublish } from "@/components/views/publish";
 // local imports
 import { DeleteProjectViewModal } from "./delete-view-modal";
@@ -41,6 +43,7 @@ export const ViewQuickActions = observer(function ViewQuickActions(props: Props)
   // store hooks
   const { data } = useUser();
   const { allowPermissions } = useUserPermissions();
+  const { updateViewPin } = useProjectView();
   // auth
   const isOwner = view?.owned_by === data?.id;
   const isAdmin = allowPermissions([EUserPermissions.ADMIN], EUserPermissionsLevel.PROJECT, workspaceSlug, projectId);
@@ -58,6 +61,24 @@ export const ViewQuickActions = observer(function ViewQuickActions(props: Props)
       });
     });
   const handleOpenInNewTab = () => window.open(`/${viewLink}`, "_blank");
+  const handleTogglePin = async () => {
+    try {
+      await updateViewPin(workspaceSlug, projectId, view.id, !view.is_pinned);
+      setToast({
+        type: TOAST_TYPE.SUCCESS,
+        title: view.is_pinned ? "View unpinned" : "View pinned",
+        message: view.is_pinned
+          ? "The view was removed from project navigation."
+          : "The view is now available in project navigation.",
+      });
+    } catch (error) {
+      setToast({
+        type: TOAST_TYPE.ERROR,
+        title: "Unable to update pinned view",
+        message: error instanceof Error ? error.message : "Please try again.",
+      });
+    }
+  };
 
   const menuResult = useViewMenuItems({
     isOwner,
@@ -72,10 +93,21 @@ export const ViewQuickActions = observer(function ViewQuickActions(props: Props)
   });
 
   // Handle both CE (array) and EE (object) return types
-  const MENU_ITEMS: TContextMenuItem[] = Array.isArray(menuResult) ? menuResult : menuResult.items;
+  const MENU_ITEMS: TContextMenuItem[] = [...(Array.isArray(menuResult) ? menuResult : menuResult.items)];
   const additionalModals = Array.isArray(menuResult) ? null : menuResult.modals;
 
   if (publishContextMenu) MENU_ITEMS.splice(2, 0, publishContextMenu);
+
+  if (isAdmin)
+    MENU_ITEMS.unshift({
+      key: "toggle_project_navigation_pin",
+      title: view.is_pinned ? "Unpin from project navigation" : "Pin to project navigation",
+      description:
+        view.access === EViewAccess.PRIVATE && !view.is_pinned ? "Only public views can be pinned." : undefined,
+      icon: view.is_pinned ? PinOff : Pin,
+      action: handleTogglePin,
+      disabled: view.access === EViewAccess.PRIVATE && !view.is_pinned,
+    });
 
   const CONTEXT_MENU_ITEMS = MENU_ITEMS.map(function CONTEXT_MENU_ITEMS(item) {
     return {

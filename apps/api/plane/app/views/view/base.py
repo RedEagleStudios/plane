@@ -312,6 +312,46 @@ class IssueViewViewSet(BaseViewSet):
         return Response(views, status=status.HTTP_200_OK)
 
     @allow_permission(allowed_roles=[ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST])
+    def list_pinned(self, request, slug, project_id):
+        queryset = self.get_queryset().filter(is_pinned=True, access=1, archived_at__isnull=True).order_by("name")
+        project = Project.objects.get(id=project_id)
+        if (
+            ProjectMember.objects.filter(
+                workspace__slug=slug,
+                project_id=project_id,
+                member=request.user,
+                role=5,
+                is_active=True,
+            ).exists()
+            and not project.guest_view_all_features
+        ):
+            queryset = queryset.filter(owned_by=request.user)
+
+        return Response(IssueViewSerializer(queryset, many=True).data, status=status.HTTP_200_OK)
+
+    @allow_permission(allowed_roles=[ROLE.ADMIN])
+    def update_pin(self, request, slug, project_id, pk):
+        is_pinned = request.data.get("is_pinned")
+        if not isinstance(is_pinned, bool):
+            return Response(
+                {"is_pinned": ["This field must be a boolean."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        issue_view = IssueView.objects.filter(pk=pk, workspace__slug=slug, project_id=project_id).first()
+        if issue_view is None:
+            return Response({"error": "View not found."}, status=status.HTTP_404_NOT_FOUND)
+        if is_pinned and issue_view.access != 1:
+            return Response(
+                {"error": "Only public views can be pinned to project navigation."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        issue_view.is_pinned = is_pinned
+        issue_view.save(update_fields=["is_pinned", "updated_at"])
+        return Response(IssueViewSerializer(issue_view).data, status=status.HTTP_200_OK)
+
+    @allow_permission(allowed_roles=[ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST])
     def retrieve(self, request, slug, project_id, pk):
         issue_view = self.get_queryset().filter(pk=pk, project_id=project_id).first()
         project = Project.objects.get(id=project_id)
