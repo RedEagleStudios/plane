@@ -3,8 +3,10 @@
 # See the LICENSE file for details.
 
 import copy
+from django import forms
 
 from django.db import models
+from django.utils import timezone
 from django.db.models import Q
 from django_filters import FilterSet, filters
 
@@ -16,6 +18,46 @@ class UUIDInFilter(filters.BaseInFilter, filters.UUIDFilter):
 
 
 class CharInFilter(filters.BaseInFilter, filters.CharFilter):
+    pass
+
+
+CURRENT_USER_FILTER_VALUE = "me"
+
+
+class CurrentUserUUIDField(forms.UUIDField):
+    """Accept UUIDs plus the dynamic current-user sentinel."""
+
+    def to_python(self, value):
+        if value == CURRENT_USER_FILTER_VALUE:
+            return value
+        return super().to_python(value)
+
+
+class CurrentUserUUIDFilter(filters.UUIDFilter):
+    field_class = CurrentUserUUIDField
+
+
+class CurrentUserUUIDInFilter(filters.BaseInFilter, CurrentUserUUIDFilter):
+    pass
+
+
+CURRENT_CYCLE_FILTER_VALUE = "current"
+
+
+class CurrentCycleUUIDField(forms.UUIDField):
+    """Accept UUIDs plus the dynamic current-cycle sentinel."""
+
+    def to_python(self, value):
+        if value == CURRENT_CYCLE_FILTER_VALUE:
+            return value
+        return super().to_python(value)
+
+
+class CurrentCycleUUIDFilter(filters.UUIDFilter):
+    field_class = CurrentCycleUUIDField
+
+
+class CurrentCycleUUIDInFilter(filters.BaseInFilter, CurrentCycleUUIDFilter):
     pass
 
 
@@ -135,11 +177,11 @@ class BaseFilterSet(FilterSet):
 class IssueFilterSet(BaseFilterSet):
     # Custom filter methods to handle soft delete exclusion for relations
 
-    assignee_id = filters.UUIDFilter(method="filter_assignee_id")
-    assignee_id__in = UUIDInFilter(method="filter_assignee_id_in", lookup_expr="in")
+    assignee_id = CurrentUserUUIDFilter(method="filter_assignee_id")
+    assignee_id__in = CurrentUserUUIDInFilter(method="filter_assignee_id_in", lookup_expr="in")
 
-    cycle_id = filters.UUIDFilter(method="filter_cycle_id")
-    cycle_id__in = UUIDInFilter(method="filter_cycle_id_in", lookup_expr="in")
+    cycle_id = CurrentCycleUUIDFilter(method="filter_cycle_id")
+    cycle_id__in = CurrentCycleUUIDInFilter(method="filter_cycle_id_in", lookup_expr="in")
 
     module_id = filters.UUIDFilter(method="filter_module_id")
     module_id__in = UUIDInFilter(method="filter_module_id_in", lookup_expr="in")
@@ -213,32 +255,55 @@ class IssueFilterSet(BaseFilterSet):
     # Filter methods with soft delete exclusion for relations
 
     def filter_assignee_id(self, queryset, name, value):
-        """Filter by assignee ID, excluding soft deleted users"""
+        """Filter by an assignee ID or the user evaluating the filter."""
+        assignee_id = self._request_user_id() if value == CURRENT_USER_FILTER_VALUE else value
+        if assignee_id is None:
+            return Q(pk__in=[])
         return Q(
-            issue_assignee__assignee_id=value,
+            issue_assignee__assignee_id=assignee_id,
             issue_assignee__deleted_at__isnull=True,
         )
 
     def filter_assignee_id_in(self, queryset, name, value):
-        """Filter by assignee IDs (in), excluding soft deleted users"""
+        """Filter by assignee IDs, optionally including the user evaluating the filter."""
+        assignee_ids = [assignee_id for assignee_id in value if assignee_id != CURRENT_USER_FILTER_VALUE]
+        if CURRENT_USER_FILTER_VALUE in value:
+            request_user_id = self._request_user_id()
+            if request_user_id is not None:
+                assignee_ids.append(request_user_id)
         return Q(
-            issue_assignee__assignee_id__in=value,
+            issue_assignee__assignee_id__in=assignee_ids,
             issue_assignee__deleted_at__isnull=True,
         )
 
+    def _request_user_id(self):
+        return getattr(getattr(self.request, "user", None), "id", None)
+
     def filter_cycle_id(self, queryset, name, value):
-        """Filter by cycle ID, excluding soft deleted cycles"""
-        return Q(
-            issue_cycle__cycle_id=value,
-            issue_cycle__deleted_at__isnull=True,
+        """Filter by a cycle ID or the cycle active at request time."""
+        cycle_filter = (
+            Q(
+                issue_cycle__cycle__start_date__lte=timezone.now(),
+                issue_cycle__cycle__end_date__gte=timezone.now(),
+                issue_cycle__cycle__archived_at__isnull=True,
+            )
+            if value == CURRENT_CYCLE_FILTER_VALUE
+            else Q(issue_cycle__cycle_id=value)
         )
+        return Q(issue_cycle__deleted_at__isnull=True) & cycle_filter
 
     def filter_cycle_id_in(self, queryset, name, value):
-        """Filter by cycle IDs (in), excluding soft deleted cycles"""
-        return Q(
-            issue_cycle__cycle_id__in=value,
-            issue_cycle__deleted_at__isnull=True,
-        )
+        """Filter by cycle IDs, optionally including the cycle active at request time."""
+        include_current_cycle = CURRENT_CYCLE_FILTER_VALUE in value
+        cycle_ids = [cycle_id for cycle_id in value if cycle_id != CURRENT_CYCLE_FILTER_VALUE]
+        cycle_filter = Q(issue_cycle__cycle_id__in=cycle_ids)
+        if include_current_cycle:
+            cycle_filter |= Q(
+                issue_cycle__cycle__start_date__lte=timezone.now(),
+                issue_cycle__cycle__end_date__gte=timezone.now(),
+                issue_cycle__cycle__archived_at__isnull=True,
+            )
+        return Q(issue_cycle__deleted_at__isnull=True) & cycle_filter
 
     def filter_module_id(self, queryset, name, value):
         """Filter by module ID, excluding soft deleted modules"""

@@ -270,9 +270,9 @@ class ComplexFilterBackend(filters.BaseFilterBackend):
         qd = qd.copy()
         qd._mutable = False
 
-        # Instantiate the filterset with the actual queryset
-        # Custom filter methods may need access to the queryset for filtering
-        fs = filterset_class(data=qd, queryset=queryset)
+        # Instantiate the filterset with request context so dynamic values such as
+        # "me" can resolve against the user evaluating a saved view.
+        fs = filterset_class(data=qd, queryset=queryset, request=getattr(view, "request", None))
 
         if not fs.is_valid():
             ve = translate_validation(fs.errors)

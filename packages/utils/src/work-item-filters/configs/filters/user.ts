@@ -5,7 +5,7 @@
  */
 
 // plane imports
-import type { TFilterProperty } from "@plane/types";
+import type { IUserLite, TFilterProperty } from "@plane/types";
 import { EQUALITY_OPERATOR, COLLECTION_OPERATOR } from "@plane/types";
 // local imports
 import type { TCreateFilterConfig, TCreateUserFilterParams } from "../../../rich-filters";
@@ -16,7 +16,9 @@ import { createFilterConfig, createOperatorConfigEntry, getMemberMultiSelectConf
 /**
  * Assignee filter specific params
  */
-export type TCreateAssigneeFilterParams = TCreateUserFilterParams;
+export type TCreateAssigneeFilterParams = TCreateUserFilterParams & {
+  currentUser?: IUserLite;
+};
 
 /**
  * Get the assignee filter config
@@ -26,18 +28,30 @@ export type TCreateAssigneeFilterParams = TCreateUserFilterParams;
  */
 export const getAssigneeFilterConfig =
   <P extends TFilterProperty>(key: P): TCreateFilterConfig<P, TCreateAssigneeFilterParams> =>
-  (params: TCreateAssigneeFilterParams) =>
-    createFilterConfig<P>({
+  (params: TCreateAssigneeFilterParams) => {
+    const members = params.currentUser
+      ? [
+          {
+            ...params.currentUser,
+            id: "me",
+            display_name: "Me",
+          },
+          ...params.members,
+        ]
+      : params.members;
+
+    return createFilterConfig<P>({
       id: key,
       label: "Assignees",
       ...params,
       icon: params.filterIcon,
       supportedOperatorConfigsMap: new Map([
         createOperatorConfigEntry(COLLECTION_OPERATOR.IN, params, (updatedParams) =>
-          getMemberMultiSelectConfig(updatedParams, EQUALITY_OPERATOR.EXACT)
+          getMemberMultiSelectConfig({ ...updatedParams, members }, EQUALITY_OPERATOR.EXACT)
         ),
       ]),
     });
+  };
 
 // ------------ Mention filter ------------
 

@@ -11,6 +11,14 @@ import { EQUALITY_OPERATOR, COLLECTION_OPERATOR } from "@plane/types";
 import type { TCreateFilterConfigParams, IFilterIconConfig, TCreateFilterConfig } from "../../../rich-filters";
 import { createFilterConfig, getMultiSelectConfig, createOperatorConfigEntry } from "../../../rich-filters";
 
+const CURRENT_CYCLE_FILTER_VALUE = "current";
+
+type TCycleFilterOption = {
+  id: string;
+  name: string;
+  status: TCycleGroups;
+};
+
 /**
  * Cycle filter specific params
  */
@@ -24,14 +32,30 @@ export type TCreateCycleFilterParams = TCreateFilterConfigParams &
  * @param params - The filter params
  * @returns The cycle multi select config
  */
-export const getCycleMultiSelectConfig = (params: TCreateCycleFilterParams, singleValueOperator: TSupportedOperators) =>
-  getMultiSelectConfig<ICycle, string, TCycleGroups>(
+export const getCycleMultiSelectConfig = (
+  params: TCreateCycleFilterParams,
+  singleValueOperator: TSupportedOperators
+) => {
+  const cycleOptions: TCycleFilterOption[] = [
     {
-      items: params.cycles,
+      id: CURRENT_CYCLE_FILTER_VALUE,
+      name: "Current cycle",
+      status: "current",
+    },
+    ...params.cycles.map((cycle) => ({
+      id: cycle.id,
+      name: cycle.name,
+      status: cycle.status || "draft",
+    })),
+  ];
+
+  return getMultiSelectConfig<TCycleFilterOption, string, TCycleGroups>(
+    {
+      items: cycleOptions,
       getId: (cycle) => cycle.id,
       getLabel: (cycle) => cycle.name,
       getValue: (cycle) => cycle.id,
-      getIconData: (cycle) => cycle.status || "draft",
+      getIconData: (cycle) => cycle.status,
     },
     {
       singleValueOperator,
@@ -41,6 +65,7 @@ export const getCycleMultiSelectConfig = (params: TCreateCycleFilterParams, sing
       ...params,
     }
   );
+};
 
 /**
  * Get the cycle filter config

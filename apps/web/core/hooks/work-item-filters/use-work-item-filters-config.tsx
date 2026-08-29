@@ -60,6 +60,7 @@ import { useMember } from "@/hooks/store/use-member";
 import { useModule } from "@/hooks/store/use-module";
 import { useProject } from "@/hooks/store/use-project";
 import { useProjectState } from "@/hooks/store/use-project-state";
+import { useUser } from "@/hooks/store/user";
 // plane web imports
 import { useFiltersOperatorConfigs } from "@/hooks/rich-filters/use-filters-operator-configs";
 
@@ -98,6 +99,7 @@ export const useWorkItemFiltersConfig = (props: TUseWorkItemFiltersConfigProps):
   const { getModuleById } = useModule();
   const { getStateById } = useProjectState();
   const { getUserDetails } = useMember();
+  const { data: currentUser } = useUser();
   // derived values
   const operatorConfigs = useFiltersOperatorConfigs({ workspaceSlug });
   const filtersToShow = useMemo(() => new Set(allowedFilters), [allowedFilters]);
@@ -108,6 +110,10 @@ export const useWorkItemFiltersConfig = (props: TUseWorkItemFiltersConfigProps):
         ? (memberIds.map((memberId) => getUserDetails(memberId)).filter((member) => member) as IUserLite[])
         : undefined,
     [memberIds, getUserDetails]
+  );
+  const currentUserDetails = useMemo(
+    () => (currentUser?.id ? getUserDetails(currentUser.id) : undefined),
+    [currentUser?.id, getUserDetails]
   );
   const workItemStates: IState[] | undefined = useMemo(
     () =>
@@ -133,7 +139,9 @@ export const useWorkItemFiltersConfig = (props: TUseWorkItemFiltersConfigProps):
   const projects = useMemo(
     () =>
       projectIds
-        ? (projectIds.map((projectId) => getProjectById(projectId)).filter((project) => project) as IProject[])
+        ? (projectIds
+            .map((candidateProjectId) => getProjectById(candidateProjectId))
+            .filter((projectDetails) => projectDetails) as IProject[])
         : [],
     [projectIds, getProjectById]
   );
@@ -219,6 +227,7 @@ export const useWorkItemFiltersConfig = (props: TUseWorkItemFiltersConfigProps):
       getAssigneeFilterConfig<TWorkItemFilterProperty>("assignee_id")({
         isEnabled: isFilterEnabled("assignee_id") && members !== undefined,
         filterIcon: MembersPropertyIcon,
+        currentUser: currentUserDetails,
         members: members ?? [],
         getOptionIcon: (memberDetails) => (
           <Avatar
@@ -230,7 +239,7 @@ export const useWorkItemFiltersConfig = (props: TUseWorkItemFiltersConfigProps):
         ),
         ...operatorConfigs,
       }),
-    [isFilterEnabled, members, operatorConfigs]
+    [currentUserDetails, isFilterEnabled, members, operatorConfigs]
   );
 
   // mention filter config
@@ -356,7 +365,7 @@ export const useWorkItemFiltersConfig = (props: TUseWorkItemFiltersConfigProps):
         isEnabled: isFilterEnabled("project_id") && projects !== undefined,
         filterIcon: Briefcase,
         projects: projects,
-        getOptionIcon: (project) => <Logo logo={project.logo_props} size={12} />,
+        getOptionIcon: (projectDetails) => <Logo logo={projectDetails.logo_props} size={12} />,
         ...operatorConfigs,
       }),
     [isFilterEnabled, projects, operatorConfigs]
