@@ -85,6 +85,8 @@ COPY --from=aio-assets /assets/Caddyfile /app/proxy/Caddyfile
 
 COPY --from=backend-img /code /app/backend
 COPY --from=backend-img /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+# Overlay the customized API source from this repository onto the matching upstream runtime.
+COPY apps/api/plane /app/backend/plane
 COPY --from=backend-img /usr/local/bin/ /usr/local/bin/
 
 RUN pip install --no-cache-dir supervisor \
