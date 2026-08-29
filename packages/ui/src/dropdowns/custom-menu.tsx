@@ -210,6 +210,9 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
         "fixed z-30 translate-y-0",
         menuItemsClassName
       )} /** translate-y-0 is a hack to create new stacking context. Required for safari  */
+      ref={setPopperElement}
+      style={styles.popper}
+      {...attributes.popper}
       static
     >
       <div
@@ -223,9 +226,6 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
           },
           optionsClassName
         )}
-        ref={setPopperElement}
-        style={styles.popper}
-        {...attributes.popper}
       >
         <MenuContext.Provider value={menuContextValue}>{children}</MenuContext.Provider>
       </div>
@@ -247,6 +247,7 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
+        if ((e.target as HTMLElement).closest("[data-custom-menu-trigger]")) return;
         handleOnClick();
       }}
       onMouseEnter={handleMouseEnter}
@@ -256,17 +257,15 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
       {({ open }) => (
         <>
           {customButton ? (
-            <Menu.Button
-              as={React.Fragment}
+            <div
               ref={setReferenceElement}
-              className={customButtonClassName}
-              onClick={handleMenuButtonClick}
-              onKeyDown={handleMenuButtonKeyDown}
-              tabIndex={customButtonTabIndex}
-              disabled={disabled}
+              className={cn("inline-flex", customButtonClassName)}
+              onClickCapture={toggleMenuButton}
+              onKeyDownCapture={handleMenuButtonKeyDown}
+              data-custom-menu-trigger
             >
-              {customButton}
-            </Menu.Button>
+              <Menu.Button as={React.Fragment}>{customButton}</Menu.Button>
+            </div>
           ) : (
             <>
               {ellipsis || verticalEllipsis ? (
