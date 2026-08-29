@@ -48,7 +48,7 @@ import type {
 import { EIssuesStoreType } from "@plane/types";
 // plane ui
 import { Avatar } from "@plane/ui";
-import { renderFormattedDate, getFileURL } from "@plane/utils";
+import { renderFormattedDate, getFileURL, orderCyclesForGrouping } from "@plane/utils";
 // store
 import { store } from "@/lib/store-context";
 import { ISSUE_FILTER_DEFAULT_DATA } from "@/store/issue/helpers/base-issues.store";
@@ -188,9 +188,10 @@ const getCycleColumns = (): IGroupByColumn[] | undefined => {
   const { getProjectCycleDetails } = store.cycle;
   // Get the cycle details for the current project
   const cycleDetails = currentProjectDetails?.id ? getProjectCycleDetails(currentProjectDetails?.id) : undefined;
+  const orderedCycleDetails = cycleDetails ? orderCyclesForGrouping(cycleDetails) : undefined;
   // Map the cycle details to the group by columns
   const cycles: IGroupByColumn[] = [];
-  cycleDetails?.map((cycle) => {
+  orderedCycleDetails?.map((cycle) => {
     const cycleStatus = cycle.status ? (cycle.status.toLocaleLowerCase() as TCycleGroups) : "draft";
     const isDropDisabled = cycleStatus === "completed";
     cycles.push({
