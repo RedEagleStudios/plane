@@ -49,6 +49,24 @@ export const orderCompletedCycles = <T extends Pick<ICycle, "end_date" | "start_
   orderBy(cycles, [(cycle) => cycle.end_date ?? "", (cycle) => cycle.start_date ?? ""], ["desc", "desc"]);
 
 /**
+ * Preserves the existing order of incomplete cycles, then appends completed cycles
+ * from most recently ended to oldest.
+ */
+export const orderCyclesForGrouping = <T extends Pick<ICycle, "status" | "end_date" | "start_date">>(
+  cycles: T[]
+): T[] => {
+  const incompleteCycles: T[] = [];
+  const completedCycles: T[] = [];
+
+  cycles.forEach((cycle) => {
+    if (cycle.status?.toLowerCase() === "completed") completedCycles.push(cycle);
+    else incompleteCycles.push(cycle);
+  });
+
+  return incompleteCycles.concat(orderCompletedCycles(completedCycles));
+};
+
+/**
  * Filters cycles based on provided filter criteria
  * @param {ICycle} cycle - The cycle to be filtered
  * @param {TCycleFilters} filter - Filter criteria to apply
