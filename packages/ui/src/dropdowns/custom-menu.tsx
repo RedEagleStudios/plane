@@ -257,13 +257,13 @@ function CustomMenu(props: ICustomMenuDropdownProps) {
         <>
           {customButton ? (
             <Menu.Button
-              as="div"
+              as={React.Fragment}
               ref={setReferenceElement}
-              className={cn("inline-flex", customButtonClassName)}
+              className={customButtonClassName}
               onClick={handleMenuButtonClick}
               onKeyDown={handleMenuButtonKeyDown}
-              role="presentation"
-              tabIndex={-1}
+              tabIndex={customButtonTabIndex}
+              disabled={disabled}
             >
               {customButton}
             </Menu.Button>
