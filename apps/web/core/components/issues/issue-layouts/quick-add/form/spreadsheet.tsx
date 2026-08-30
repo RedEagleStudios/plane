@@ -269,6 +269,11 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
     }
   }, [formValues.description_html]);
 
+  const handleOpenDescription = () => {
+    setIsDescriptionOpen(true);
+    requestAnimationFrame(() => editorRef.current?.focus("end"));
+  };
+
   const handleCancelDescription = () => {
     editorRef.current?.clearEditor();
     setValue("description_html", "<p></p>", { shouldDirty: true });
@@ -297,9 +302,11 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
                         required: isEpic ? t("epic.title.required") : t("issue.title.required"),
                       })}
                       onKeyDown={(event) => {
-                        if (event.key !== "Enter" || !event.shiftKey) return;
+                        const shouldOpenDescription =
+                          event.key === "Enter" && (event.shiftKey || event.ctrlKey || event.metaKey);
+                        if (!shouldOpenDescription) return;
                         event.preventDefault();
-                        setIsDescriptionOpen(true);
+                        handleOpenDescription();
                       }}
                       className="h-full w-full bg-transparent text-13 leading-5 text-secondary outline-none"
                     />
@@ -323,6 +330,7 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
             <div className="border-b-[0.5px] border-subtle px-page-x py-2">
               <RichTextEditor
                 editable
+                autofocus
                 id="spreadsheet-quick-add-editor"
                 initialValue={formValues.description_html ?? "<p></p>"}
                 workspaceSlug={workspaceSlug.toString()}
@@ -372,7 +380,7 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
             <button
               type="button"
               className="text-12 font-medium text-secondary hover:text-primary"
-              onClick={() => setIsDescriptionOpen(true)}
+              onClick={handleOpenDescription}
             >
               {hasDescription ? "Edit description" : "Add description"}
             </button>
@@ -380,7 +388,7 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
               <span className="hidden text-11 text-placeholder md:inline">
                 {isDescriptionOpen
                   ? "Ctrl/⌘ + Enter to create · Enter for a new line"
-                  : "Enter to create · Shift + Enter to add description"}
+                  : "Enter to create · Shift/Ctrl/⌘ + Enter to add description"}
               </span>
               {isDescriptionOpen && (
                 <Button type="button" variant="secondary" size="sm" onClick={handleCancelDescription}>
