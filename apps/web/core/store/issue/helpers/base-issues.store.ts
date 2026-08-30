@@ -45,6 +45,7 @@ import {
   getSubGroupIssueKeyActions,
 } from "./base-issues-utils";
 import { getIssueLayoutGroupBy } from "./issue-pagination";
+import { removeIssueIdFromGroup } from "./grouped-issue.utils";
 import type { IBaseIssueFilterStore } from "./issue-filter-helper.store";
 
 export type TIssueDisplayFilterOptions = Exclude<TIssueGroupByOptions, null> | "target_date";
@@ -1230,7 +1231,9 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
         //if update is delete, remove it at a particular path
         if (issueUpdate.action === EIssueGroupedAction.DELETE) {
           // remove issue Id from the path
-          update(this, ["groupedIssueIds", ...issueUpdate.path], (issueIds: string[] = []) => pull(issueIds, issueId));
+          update(this, ["groupedIssueIds", ...issueUpdate.path], (issueIds: string[] = []) =>
+            removeIssueIdFromGroup(issueIds, issueId)
+          );
         }
 
         // accumulate the updates so that we don't end up updating the count twice for the same issue
