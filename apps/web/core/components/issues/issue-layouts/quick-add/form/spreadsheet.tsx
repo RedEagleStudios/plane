@@ -4,10 +4,11 @@
  * See the LICENSE file for details.
  */
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react";
 import { DEFAULT_WORK_ITEM_FORM_VALUES } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";
+import { Button } from "@plane/propel/button";
 import { DueDatePropertyIcon, StartDatePropertyIcon } from "@plane/propel/icons";
 import type { IIssueDisplayProperties, TIssue } from "@plane/types";
 import { getDate, renderFormattedPayloadDate } from "@plane/utils";
@@ -23,7 +24,11 @@ import { shouldRenderColumn } from "@/helpers/issue-filter.helper";
 import { useLabel } from "@/hooks/store/use-label";
 import { SPREADSHEET_COLUMNS } from "../../utils";
 import type { TQuickAddIssueForm } from "../root";
-import { isQuickAddEditableProperty, QUICK_ADD_DROPDOWN_PLACEMENT } from "../quick-add.utils";
+import {
+  isQuickAddEditableProperty,
+  plainTextToDescriptionHtml,
+  QUICK_ADD_DROPDOWN_PLACEMENT,
+} from "../quick-add.utils";
 
 type QuickAddSpreadsheetColumnProps = Pick<TQuickAddIssueForm, "displayProperties" | "setValue"> & {
   issue: TIssue;
@@ -232,8 +237,12 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
     spreadsheetColumnsList = [],
     onSubmit,
     isEpic,
+    isSubmitting,
   } = props;
   const { t } = useTranslation();
+  const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
+  const [descriptionText, setDescriptionText] = useState("");
   const formValues = watch();
   const issue = {
     ...DEFAULT_WORK_ITEM_FORM_VALUES,
@@ -242,10 +251,27 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
     project_id: formValues.project_id || prePopulatedData?.project_id || projectDetail.id,
   } as TIssue;
 
+  useEffect(() => {
+    if (!formValues.description_html || formValues.description_html === "<p></p>") {
+      setDescriptionText("");
+      setIsDescriptionOpen(false);
+    }
+  }, [formValues.description_html]);
+
+  useEffect(() => {
+    if (isDescriptionOpen) descriptionRef.current?.focus();
+  }, [isDescriptionOpen]);
+
+  const handleCancelDescription = () => {
+    setDescriptionText("");
+    setValue("description_html", "<p></p>", { shouldDirty: true });
+    setIsDescriptionOpen(false);
+  };
+
   return (
     <div className="pb-2">
-      <div className="horizontal-scrollbar overflow-x-auto">
-        <form ref={ref} onSubmit={onSubmit} className="z-10 min-w-max bg-surface-1 shadow-raised-200">
+      <form ref={ref} onSubmit={onSubmit} className="z-10 w-full bg-surface-1 shadow-raised-200">
+        <div className="horizontal-scrollbar overflow-x-auto">
           <table className="w-full min-w-max border-collapse">
             <tbody>
               <tr className="border-[0.5px] border-t-0 border-subtle">
@@ -263,6 +289,11 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
                       {...register("name", {
                         required: isEpic ? t("epic.title.required") : t("issue.title.required"),
                       })}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" || !event.shiftKey) return;
+                        event.preventDefault();
+                        setIsDescriptionOpen(true);
+                      }}
                       className="h-full w-full bg-transparent text-13 leading-5 text-secondary outline-none"
                     />
                   </div>
@@ -279,11 +310,66 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
               </tr>
             </tbody>
           </table>
-        </form>
-      </div>
-      <p className="mt-3 ml-3 text-11 text-secondary italic">
-        {isEpic ? t("epic.add.press_enter") : t("issue.add.press_enter")}
-      </p>
+        </div>
+        <div className="border-x-[0.5px] border-b-[0.5px] border-subtle bg-surface-1">
+          {isDescriptionOpen && (
+            <div className="border-b-[0.5px] border-subtle px-page-x py-2">
+              <textarea
+                ref={descriptionRef}
+                value={descriptionText}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setDescriptionText(value);
+                  setValue("description_html", plainTextToDescriptionHtml(value), { shouldDirty: true });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    onSubmit();
+                  } else if (event.key === "Escape" && descriptionText.trim().length === 0) {
+                    event.preventDefault();
+                    setIsDescriptionOpen(false);
+                  }
+                }}
+                rows={3}
+                placeholder="Add a description…"
+                aria-label="Work item description"
+                className="max-h-40 min-h-20 w-full resize-y bg-transparent text-13 text-primary outline-none placeholder:text-placeholder"
+              />
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 px-page-x py-2">
+            <button
+              type="button"
+              className="text-12 font-medium text-secondary hover:text-primary"
+              onClick={() => setIsDescriptionOpen(true)}
+            >
+              {descriptionText.length > 0 ? "Edit description" : "Add description"}
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="hidden text-11 text-placeholder md:inline">
+                {isDescriptionOpen
+                  ? "Ctrl/⌘ + Enter to create · Enter for a new line"
+                  : "Enter to create · Shift + Enter to add description"}
+              </span>
+              {isDescriptionOpen && (
+                <Button type="button" variant="secondary" size="sm" onClick={handleCancelDescription}>
+                  Cancel
+                </Button>
+              )}
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                loading={isSubmitting}
+                disabled={isSubmitting || !formValues.name?.trim()}
+              >
+                Create
+              </Button>
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
   );
 });

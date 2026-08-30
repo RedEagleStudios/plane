@@ -5,7 +5,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { getRepeatedQuickAddValues, isQuickAddEditableProperty, QUICK_ADD_DROPDOWN_PLACEMENT } from "./quick-add.utils";
+import {
+  getRepeatedQuickAddValues,
+  isQuickAddEditableProperty,
+  plainTextToDescriptionHtml,
+  QUICK_ADD_DROPDOWN_PLACEMENT,
+} from "./quick-add.utils";
 
 describe("Advanced spreadsheet quick add", () => {
   it("preserves selected column values between submissions while clearing text", () => {
@@ -48,5 +53,12 @@ describe("Advanced spreadsheet quick add", () => {
 
   it("opens footer dropdowns above their controls", () => {
     expect(QUICK_ADD_DROPDOWN_PLACEMENT).toBe("top-start");
+  });
+
+  it("converts inline description text to safe work-item HTML", () => {
+    expect(plainTextToDescriptionHtml("First line\n\n<script>alert('x')</script>")).toBe(
+      "<p>First line</p><p><br></p><p>&lt;script&gt;alert(&#039;x&#039;)&lt;/script&gt;</p>"
+    );
+    expect(plainTextToDescriptionHtml("   ")).toBe("<p></p>");
   });
 });

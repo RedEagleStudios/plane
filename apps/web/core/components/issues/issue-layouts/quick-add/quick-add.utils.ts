@@ -16,6 +16,23 @@ export function getRepeatedQuickAddValues(values: Partial<TIssue>): Partial<TIss
   };
 }
 
+export function plainTextToDescriptionHtml(value: string): string {
+  if (value.trim().length === 0) return "<p></p>";
+
+  return value
+    .split("\n")
+    .map((line) => {
+      const escapedLine = line
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+      return escapedLine.length > 0 ? `<p>${escapedLine}</p>` : "<p><br></p>";
+    })
+    .join("");
+}
+
 export function isQuickAddEditableProperty(property: keyof IIssueDisplayProperties): boolean {
   switch (property) {
     case "state":

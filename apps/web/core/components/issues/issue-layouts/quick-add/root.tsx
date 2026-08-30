@@ -35,6 +35,7 @@ export type TQuickAddIssueForm = {
   prePopulatedData?: Partial<TIssue>;
   displayProperties?: IIssueDisplayProperties;
   spreadsheetColumnsList?: (keyof IIssueDisplayProperties)[];
+  isSubmitting: boolean;
 };
 
 export type TQuickAddIssueButton = {
@@ -177,6 +178,7 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
           setValue={setValue}
           displayProperties={displayProperties}
           spreadsheetColumnsList={spreadsheetColumnsList}
+          isSubmitting={isSubmitting}
           onSubmit={handleSubmit(onSubmitHandler)}
           onClose={() => handleIsOpen(false)}
           isEpic={isEpic}
