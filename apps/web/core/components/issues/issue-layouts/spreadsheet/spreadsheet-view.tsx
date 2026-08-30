@@ -114,6 +114,8 @@ export const SpreadsheetView = observer(function SpreadsheetView(props: Props) {
                     layout={EIssueLayoutTypes.SPREADSHEET}
                     QuickAddButton={SpreadsheetAddIssueButton}
                     quickAddCallback={quickAddCallback}
+                    displayProperties={displayProperties}
+                    spreadsheetColumnsList={spreadsheetColumnsList}
                     isEpic={isEpic}
                   />
                 )}

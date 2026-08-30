@@ -7,12 +7,12 @@
 import type { FC } from "react";
 import { useEffect, useRef } from "react";
 import { observer } from "mobx-react";
-import type { UseFormRegister, UseFormSetFocus } from "react-hook-form";
+import type { UseFormRegister, UseFormSetFocus, UseFormSetValue, UseFormWatch } from "react-hook-form";
 // plane constants
 // plane helpers
 import { useOutsideClickDetector } from "@plane/hooks";
 // types
-import type { TIssue } from "@plane/types";
+import type { IIssueDisplayProperties, TIssue } from "@plane/types";
 import { EIssueLayoutTypes } from "@plane/types";
 // components
 import type { TQuickAddIssueForm } from "@/components/issues/issue-layouts/quick-add";
@@ -38,10 +38,29 @@ export type TQuickAddIssueFormRoot = {
   onSubmit: () => void;
   onClose: () => void;
   isEpic: boolean;
+  watch: UseFormWatch<TIssue>;
+  setValue: UseFormSetValue<TIssue>;
+  displayProperties?: IIssueDisplayProperties;
+  spreadsheetColumnsList?: (keyof IIssueDisplayProperties)[];
 };
 
 export const QuickAddIssueFormRoot = observer(function QuickAddIssueFormRoot(props: TQuickAddIssueFormRoot) {
-  const { isOpen, layout, projectId, hasError = false, setFocus, register, onSubmit, onClose, isEpic } = props;
+  const {
+    isOpen,
+    layout,
+    prePopulatedData,
+    projectId,
+    hasError = false,
+    setFocus,
+    register,
+    watch,
+    setValue,
+    displayProperties,
+    spreadsheetColumnsList,
+    onSubmit,
+    onClose,
+    isEpic,
+  } = props;
   // store hooks
   const { getProjectById } = useProject();
   // derived values
@@ -78,6 +97,11 @@ export const QuickAddIssueFormRoot = observer(function QuickAddIssueFormRoot(pro
       projectDetail={projectDetail}
       hasError={hasError}
       register={register}
+      watch={watch}
+      setValue={setValue}
+      prePopulatedData={prePopulatedData}
+      displayProperties={displayProperties}
+      spreadsheetColumnsList={spreadsheetColumnsList}
       onSubmit={onSubmit}
       isEpic={isEpic}
     />

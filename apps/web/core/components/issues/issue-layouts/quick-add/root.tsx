@@ -8,17 +8,19 @@ import type { FC } from "react";
 import { useEffect, useState } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
-import type { UseFormRegister } from "react-hook-form";
+import type { UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form";
 import { useForm } from "react-hook-form";
 // plane imports
 import { useTranslation } from "@plane/i18n";
 import { PlusIcon } from "@plane/propel/icons";
 import { setPromiseToast } from "@plane/propel/toast";
-import type { IProject, TIssue, EIssueLayoutTypes } from "@plane/types";
+import type { IIssueDisplayProperties, IProject, TIssue } from "@plane/types";
+import { EIssueLayoutTypes } from "@plane/types";
 import { cn, createIssuePayload } from "@plane/utils";
 // local imports
 import { QuickAddIssueFormRoot } from "./form";
 import { CreateIssueToastActionItems } from "../../create-issue-toast-action-items";
+import { getRepeatedQuickAddValues } from "./quick-add.utils";
 
 export type TQuickAddIssueForm = {
   ref: React.RefObject<HTMLFormElement>;
@@ -28,6 +30,11 @@ export type TQuickAddIssueForm = {
   register: UseFormRegister<TIssue>;
   onSubmit: () => void;
   isEpic: boolean;
+  watch: UseFormWatch<TIssue>;
+  setValue: UseFormSetValue<TIssue>;
+  prePopulatedData?: Partial<TIssue>;
+  displayProperties?: IIssueDisplayProperties;
+  spreadsheetColumnsList?: (keyof IIssueDisplayProperties)[];
 };
 
 export type TQuickAddIssueButton = {
@@ -45,6 +52,8 @@ type TQuickAddIssueRoot = {
   setIsQuickAddOpen?: (isOpen: boolean) => void;
   quickAddCallback?: (projectId: string | null | undefined, data: TIssue) => Promise<TIssue | undefined>;
   isEpic?: boolean;
+  displayProperties?: IIssueDisplayProperties;
+  spreadsheetColumnsList?: (keyof IIssueDisplayProperties)[];
 };
 
 const defaultValues: Partial<TIssue> = {
@@ -62,6 +71,8 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
     setIsQuickAddOpen,
     quickAddCallback,
     isEpic = false,
+    displayProperties,
+    spreadsheetColumnsList,
   } = props;
   // i18n
   const { t } = useTranslation();
@@ -75,6 +86,8 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
     handleSubmit,
     setFocus,
     register,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<TIssue>({ defaultValues });
 
@@ -100,7 +113,13 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
   const onSubmitHandler = async (formData: TIssue) => {
     if (isSubmitting || !workspaceSlug || !projectId) return;
 
-    reset({ ...defaultValues });
+    const shouldPreserveColumnValues =
+      layout === EIssueLayoutTypes.SPREADSHEET || layout === EIssueLayoutTypes.GROUPED_SPREADSHEET;
+    reset(
+      shouldPreserveColumnValues
+        ? getRepeatedQuickAddValues({ ...prePopulatedData, ...formData })
+        : { ...defaultValues }
+    );
 
     const payload = createIssuePayload(projectId.toString(), {
       // oxlint-disable-next-line unicorn/no-useless-fallback-in-spread
@@ -154,6 +173,10 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
           hasError={errors && errors?.name && errors?.name?.message ? true : false}
           setFocus={setFocus}
           register={register}
+          watch={watch}
+          setValue={setValue}
+          displayProperties={displayProperties}
+          spreadsheetColumnsList={spreadsheetColumnsList}
           onSubmit={handleSubmit(onSubmitHandler)}
           onClose={() => handleIsOpen(false)}
           isEpic={isEpic}

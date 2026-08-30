@@ -372,6 +372,8 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                   layout={EIssueLayoutTypes.GROUPED_SPREADSHEET}
                   QuickAddButton={SpreadsheetAddIssueButton}
                   quickAddCallback={quickAddCallback}
+                  displayProperties={displayProperties}
+                  spreadsheetColumnsList={spreadsheetColumnsList}
                 />
               </div>
             )}
