@@ -80,6 +80,7 @@ class ProjectCreateSerializer(BaseSerializer):
             "emoji",
             "cover_image",
             "module_view",
+            "single_module_per_issue",
             "cycle_view",
             "issue_views_view",
             "page_view",

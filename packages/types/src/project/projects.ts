@@ -28,6 +28,7 @@ export interface IPartialProject {
   cycle_view: boolean;
   issue_views_view: boolean;
   module_view: boolean;
+  single_module_per_issue?: boolean;
   page_view: boolean;
   inbox_view: boolean;
   guest_view_all_features?: boolean;

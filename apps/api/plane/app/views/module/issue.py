@@ -6,6 +6,7 @@
 import copy
 import json
 
+from django.db import transaction
 from django.db.models import F, Func, OuterRef, Q, Subquery
 
 # Django Imports
@@ -207,6 +208,7 @@ class ModuleIssueViewSet(BaseViewSet):
             )
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    @transaction.atomic
     # create multiple issues inside a module
     def create_module_issues(self, request, slug, project_id, module_id):
         issues = request.data.get("issues", [])
@@ -215,12 +217,14 @@ class ModuleIssueViewSet(BaseViewSet):
         project = Project.objects.get(pk=project_id)
         # Scope to workspace+project to prevent cross-tenant IDOR
         issues = list(
-            Issue.issue_objects.filter(
+            Issue.issue_objects.select_for_update(of=("self",)).filter(
                 workspace__slug=slug,
                 project_id=project_id,
                 pk__in=issues,
             ).values_list("id", flat=True)
         )
+        if project.single_module_per_issue:
+            ModuleIssue.objects.filter(project_id=project_id, issue_id__in=issues).exclude(module_id=module_id).delete()
         _ = ModuleIssue.objects.bulk_create(
             [
                 ModuleIssue(
@@ -254,11 +258,25 @@ class ModuleIssueViewSet(BaseViewSet):
         return Response({"message": "success"}, status=status.HTTP_201_CREATED)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    @transaction.atomic
     # add multiple module inside an issue and remove multiple modules from an issue
     def create_issue_modules(self, request, slug, project_id, issue_id):
         modules = request.data.get("modules", [])
         removed_modules = request.data.get("removed_modules", [])
         project = Project.objects.get(pk=project_id)
+        Issue.issue_objects.select_for_update(of=("self",)).get(
+            workspace__slug=slug,
+            project_id=project_id,
+            pk=issue_id,
+        )
+        if project.single_module_per_issue and len(modules) > 1:
+            return Response(
+                {"error": "Only one module can be assigned to a work item in this project"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if project.single_module_per_issue and modules:
+            ModuleIssue.objects.filter(project_id=project_id, issue_id=issue_id).exclude(module_id=modules[0]).delete()
 
         if modules:
             _ = ModuleIssue.objects.bulk_create(

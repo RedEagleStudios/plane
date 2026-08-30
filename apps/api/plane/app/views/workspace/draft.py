@@ -263,7 +263,11 @@ class WorkspaceDraftIssueViewSet(BaseViewSet):
                     origin=base_host(request=request, is_app=True),
                 )
 
-            if request.data.get("module_ids", []):
+            module_ids = request.data.get("module_ids", [])
+            if draft_issue.project.single_module_per_issue:
+                module_ids = module_ids[:1]
+
+            if module_ids:
                 # bulk create the module
                 ModuleIssue.objects.bulk_create(
                     [
@@ -275,7 +279,7 @@ class WorkspaceDraftIssueViewSet(BaseViewSet):
                             created_by_id=draft_issue.created_by_id,
                             updated_by_id=draft_issue.updated_by_id,
                         )
-                        for module in request.data.get("module_ids", [])
+                        for module in module_ids
                     ],
                     batch_size=10,
                 )
@@ -292,7 +296,7 @@ class WorkspaceDraftIssueViewSet(BaseViewSet):
                         notification=True,
                         origin=base_host(request=request, is_app=True),
                     )
-                    for module in request.data.get("module_ids", [])
+                    for module in module_ids
                 ]
 
             # Update file assets

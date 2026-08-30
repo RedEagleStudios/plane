@@ -46,13 +46,22 @@ function FeaturesModulesSettingsPage({ params }: Route.ComponentProps) {
           title={t("project_settings.features.modules.title")}
           description={t("project_settings.features.modules.description")}
         />
-        <div className="mt-7">
+        <div className="mt-7 space-y-4">
           <ProjectSettingsFeatureControlItem
             title={t("project_settings.features.modules.toggle_title")}
             description={t("project_settings.features.modules.toggle_description")}
             featureProperty="module_view"
             projectId={projectId}
             value={!!currentProjectDetails?.module_view}
+            workspaceSlug={workspaceSlug}
+          />
+          <ProjectSettingsFeatureControlItem
+            title="Limit work items to one module"
+            description="Selecting a new module replaces the current module. Existing multi-module work items are unchanged until edited."
+            disabled={!currentProjectDetails?.module_view}
+            featureProperty="single_module_per_issue"
+            projectId={projectId}
+            value={!!currentProjectDetails?.single_module_per_issue}
             workspaceSlug={workspaceSlug}
           />
         </div>
