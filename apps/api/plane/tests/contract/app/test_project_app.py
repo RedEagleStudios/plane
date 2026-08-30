@@ -398,6 +398,50 @@ class TestProjectAPIPatchDelete(TestProjectBase):
         assert project.module_view is False
 
     @pytest.mark.django_db
+    def test_update_cycle_cadence_settings(self, session_client, workspace, create_user):
+        project = Project.objects.create(name="Scheduled Cycles", identifier="SC", workspace=workspace)
+        ProjectMember.objects.create(project=project, member=create_user, role=20, is_active=True)
+
+        response = session_client.patch(
+            self.get_project_url(workspace.slug, pk=project.id),
+            {
+                "weekly_cycle_auto_create": True,
+                "weekly_cycle_start_weekday": 0,
+                "weekly_cycle_duration_days": 14,
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        project.refresh_from_db()
+        assert project.weekly_cycle_auto_create is True
+        assert project.weekly_cycle_start_weekday == 0
+        assert project.weekly_cycle_duration_days == 14
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize(
+        "invalid_data",
+        [
+            {"weekly_cycle_start_weekday": 7},
+            {"weekly_cycle_duration_days": 0},
+            {"weekly_cycle_duration_days": 91},
+        ],
+    )
+    def test_rejects_invalid_cycle_cadence(
+        self, session_client, workspace, create_user, invalid_data
+    ):
+        project = Project.objects.create(name="Invalid Schedule", identifier="IS", workspace=workspace)
+        ProjectMember.objects.create(project=project, member=create_user, role=20, is_active=True)
+
+        response = session_client.patch(
+            self.get_project_url(workspace.slug, pk=project.id),
+            invalid_data,
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    @pytest.mark.django_db
     def test_partial_update_project_forbidden_non_admin(self, session_client, workspace):
         """Test that non-admin project members cannot update project"""
         # Create a project

@@ -10,7 +10,7 @@ import pytest
 from plane.bgtasks.weekly_cycle_task import (
     create_next_weekly_cycle,
     increment_cycle_name,
-    weekly_cycle_window,
+    scheduled_cycle_window,
 )
 from plane.db.models import Cycle, Project, ProjectMember
 
@@ -21,14 +21,14 @@ def test_increment_cycle_name_uses_trailing_number():
     assert increment_cycle_name("Release") == "Release 1"
 
 
-def test_weekly_cycle_window_runs_saturday_through_friday_in_project_timezone():
-    start_at, end_at = weekly_cycle_window(date(2026, 9, 4), "Asia/Jakarta")
+def test_scheduled_cycle_window_uses_configured_duration_in_project_timezone():
+    start_at, end_at = scheduled_cycle_window(date(2026, 9, 7), 10, "Asia/Jakarta")
 
     assert start_at.astimezone(ZoneInfo("Asia/Jakarta")) == datetime(
-        2026, 9, 5, 0, 0, 1, tzinfo=ZoneInfo("Asia/Jakarta")
+        2026, 9, 7, 0, 0, 1, tzinfo=ZoneInfo("Asia/Jakarta")
     )
     assert end_at.astimezone(ZoneInfo("Asia/Jakarta")) == datetime(
-        2026, 9, 11, 23, 59, tzinfo=ZoneInfo("Asia/Jakarta")
+        2026, 9, 16, 23, 59, tzinfo=ZoneInfo("Asia/Jakarta")
     )
 
 
@@ -75,6 +75,20 @@ class TestCreateNextWeeklyCycle:
     def test_skips_non_friday_runs(self, automated_cycle_project):
         assert create_next_weekly_cycle(automated_cycle_project.id, date(2026, 9, 3)) is None
         assert Cycle.objects.filter(project=automated_cycle_project).count() == 1
+
+    def test_uses_custom_start_weekday_and_duration(self, automated_cycle_project):
+        automated_cycle_project.weekly_cycle_start_weekday = 0
+        automated_cycle_project.weekly_cycle_duration_days = 14
+        automated_cycle_project.save(
+            update_fields=["weekly_cycle_start_weekday", "weekly_cycle_duration_days"]
+        )
+
+        assert create_next_weekly_cycle(automated_cycle_project.id, date(2026, 9, 4)) is None
+        created_cycle = create_next_weekly_cycle(automated_cycle_project.id, date(2026, 9, 6))
+
+        assert created_cycle is not None
+        assert created_cycle.start_date.astimezone(ZoneInfo("Asia/Jakarta")).date() == date(2026, 9, 7)
+        assert created_cycle.end_date.astimezone(ZoneInfo("Asia/Jakarta")).date() == date(2026, 9, 20)
 
     def test_created_dates_are_timezone_aware(self, automated_cycle_project):
         created_cycle = create_next_weekly_cycle(automated_cycle_project.id, date(2026, 9, 4))

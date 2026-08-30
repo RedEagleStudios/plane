@@ -17,7 +17,6 @@ from plane.db.models import Cycle, Project, ProjectMember
 logger = logging.getLogger(__name__)
 
 CYCLE_NUMBER_SUFFIX = re.compile(r"^(.*?)(\d+)\s*$")
-FRIDAY = 4
 
 
 def increment_cycle_name(previous_name: str) -> str:
@@ -30,27 +29,35 @@ def increment_cycle_name(previous_name: str) -> str:
     return f"{prefix}{incremented_suffix}"
 
 
-def weekly_cycle_window(friday: date, timezone_name: str) -> tuple[datetime, datetime]:
+def scheduled_cycle_window(
+    start_date: date,
+    duration_days: int,
+    timezone_name: str,
+) -> tuple[datetime, datetime]:
     project_timezone = ZoneInfo(timezone_name)
-    start_date = friday + timedelta(days=1)
-    end_date = start_date + timedelta(days=6)
+    end_date = start_date + timedelta(days=duration_days - 1)
     start_at = datetime.combine(start_date, time(0, 0, 1), tzinfo=project_timezone)
     end_at = datetime.combine(end_date, time(23, 59), tzinfo=project_timezone)
     return start_at.astimezone(UTC), end_at.astimezone(UTC)
 
 
 @transaction.atomic
-def create_next_weekly_cycle(project_id, friday: date) -> Cycle | None:
+def create_next_weekly_cycle(project_id, run_date: date) -> Cycle | None:
     project = Project.objects.select_for_update().get(pk=project_id)
+    creation_weekday = (project.weekly_cycle_start_weekday - 1) % 7
     if (
         not project.weekly_cycle_auto_create
         or not project.cycle_view
         or project.archived_at is not None
-        or friday.weekday() != FRIDAY
+        or run_date.weekday() != creation_weekday
     ):
         return None
 
-    start_at, end_at = weekly_cycle_window(friday, project.timezone or "UTC")
+    start_at, end_at = scheduled_cycle_window(
+        run_date + timedelta(days=1),
+        project.weekly_cycle_duration_days,
+        project.timezone or "UTC",
+    )
     overlapping_cycle_exists = Cycle.objects.filter(
         project=project,
         archived_at__isnull=True,
@@ -98,15 +105,16 @@ def create_next_weekly_cycle(project_id, friday: date) -> Cycle | None:
 def create_weekly_project_cycles() -> int:
     now = timezone.now()
     created_cycle_count = 0
-    project_ids = Project.objects.filter(
+    project_settings = Project.objects.filter(
         weekly_cycle_auto_create=True,
         cycle_view=True,
         archived_at__isnull=True,
-    ).values_list("id", "timezone")
+    ).values_list("id", "timezone", "weekly_cycle_start_weekday")
 
-    for project_id, timezone_name in project_ids.iterator():
+    for project_id, timezone_name, start_weekday in project_settings.iterator():
         local_date = now.astimezone(ZoneInfo(timezone_name or "UTC")).date()
-        if local_date.weekday() != FRIDAY:
+        creation_weekday = (start_weekday - 1) % 7
+        if local_date.weekday() != creation_weekday:
             continue
         if create_next_weekly_cycle(project_id, local_date) is not None:
             created_cycle_count += 1

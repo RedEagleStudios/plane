@@ -94,6 +94,14 @@ class Project(BaseModel):
     single_module_per_issue = models.BooleanField(default=False)
     cycle_view = models.BooleanField(default=False)
     weekly_cycle_auto_create = models.BooleanField(default=False)
+    weekly_cycle_start_weekday = models.PositiveSmallIntegerField(
+        default=5,
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+    )
+    weekly_cycle_duration_days = models.PositiveSmallIntegerField(
+        default=7,
+        validators=[MinValueValidator(1), MaxValueValidator(90)],
+    )
     issue_views_view = models.BooleanField(default=False)
     page_view = models.BooleanField(default=True)
     intake_view = models.BooleanField(default=False)
