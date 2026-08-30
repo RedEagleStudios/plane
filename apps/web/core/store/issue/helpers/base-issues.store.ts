@@ -26,7 +26,7 @@ import type {
   TBulkOperationsPayload,
   IBlockUpdateDependencyData,
 } from "@plane/types";
-import { EIssueServiceType, EIssueLayoutTypes } from "@plane/types";
+import { EIssueServiceType } from "@plane/types";
 // helpers
 import { convertToISODateString } from "@plane/utils";
 // plane web imports
@@ -44,6 +44,7 @@ import {
   getSortOrderToFilterEmptyValues,
   getSubGroupIssueKeyActions,
 } from "./base-issues-utils";
+import { getIssueLayoutGroupBy } from "./issue-pagination";
 import type { IBaseIssueFilterStore } from "./issue-filter-helper.store";
 
 export type TIssueDisplayFilterOptions = Exclude<TIssueGroupByOptions, null> | "target_date";
@@ -286,15 +287,9 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
   // current Group by value
   get groupBy() {
     const displayFilters = this.issueFilterStore?.issueFilters?.displayFilters;
-    if (!displayFilters || !displayFilters?.layout) return;
+    if (!displayFilters) return;
 
-    const layout = displayFilters?.layout;
-
-    return layout === EIssueLayoutTypes.CALENDAR
-      ? "target_date"
-      : [EIssueLayoutTypes.LIST, EIssueLayoutTypes.KANBAN]?.includes(layout)
-        ? displayFilters?.group_by
-        : undefined;
+    return getIssueLayoutGroupBy(displayFilters.layout, displayFilters.group_by);
   }
 
   // current Sub group by value
