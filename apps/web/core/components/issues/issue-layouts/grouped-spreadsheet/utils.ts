@@ -6,7 +6,7 @@
 
 import type { TIssueGroupByOptions } from "@plane/types";
 
-export const GROUPED_TABLE_PAGE_SIZE = 20;
+export const GROUPED_TABLE_PAGE_SIZE = 100;
 
 export interface GroupedTableVirtualGroup {
   id: string;
