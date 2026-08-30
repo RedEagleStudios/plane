@@ -327,7 +327,16 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
         </div>
         <div className="border-x-[0.5px] border-b-[0.5px] border-subtle bg-surface-1">
           {isDescriptionOpen && workspaceSlug && (
-            <div className="border-b-[0.5px] border-subtle px-page-x py-2">
+            <div
+              className="border-b-[0.5px] border-subtle px-page-x py-2"
+              onKeyDownCapture={(event) => {
+                const shouldSubmit = event.key === "Enter" && (event.ctrlKey || event.metaKey);
+                if (!shouldSubmit) return;
+                event.preventDefault();
+                event.stopPropagation();
+                onSubmit();
+              }}
+            >
               <RichTextEditor
                 editable
                 autofocus
@@ -339,7 +348,6 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
                 onChange={(_description: object, descriptionHtml: string) =>
                   setValue("description_html", descriptionHtml, { shouldDirty: true })
                 }
-                onEnterKeyPress={onSubmit}
                 ref={editorRef}
                 placeholder={(isFocused, description) => t(getDescriptionPlaceholderI18n(isFocused, description))}
                 searchMentionCallback={async (payload) =>
