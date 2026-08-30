@@ -36,6 +36,7 @@ import {
   IssueProjectSelect,
   IssueTitleInput,
 } from "@/components/issues/issue-modal/components";
+import { getCreateMoreFormValues } from "./create-more";
 // helpers
 // hooks
 import { useIssueModal } from "@/hooks/context/use-issue-modal";
@@ -245,22 +246,18 @@ export const IssueFormRoot = observer(function IssueFormRoot(props: IssueFormPro
     await onSubmit(submitData, is_draft_issue)
       .then(() => {
         setGptAssistantModal(false);
-        if (isCreateMoreToggleEnabled && workItemTemplateId) {
-          handleTemplateChange({
-            workspaceSlug: workspaceSlug?.toString(),
-            reset,
-            editorRef,
-          });
+        if (isCreateMoreToggleEnabled) {
+          if (workItemTemplateId) setWorkItemTemplateId(null);
+          reset(getCreateMoreFormValues(formData));
         } else {
           reset({
             ...DEFAULT_WORK_ITEM_FORM_VALUES,
-            ...(isCreateMoreToggleEnabled ? { ...data } : {}),
             project_id: getValues<"project_id">("project_id"),
             type_id: getValues<"type_id">("type_id"),
             description_html: data?.description_html ?? "<p></p>",
           });
-          editorRef?.current?.clearEditor();
         }
+        editorRef.current?.clearEditor();
       })
       .catch((error) => {
         console.error(error);
