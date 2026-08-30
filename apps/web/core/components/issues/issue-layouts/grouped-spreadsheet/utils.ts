@@ -21,6 +21,21 @@ export type GroupedTableVirtualRow =
   | { type: "issue"; key: string; groupId: string; issueId: string }
   | { type: "load-more"; key: string; groupId: string; loadedCount: number; isLoading: boolean };
 
+type GroupVisibilityOptions = {
+  cycleStatus?: string | null;
+  groupBy: TIssueGroupByOptions | null;
+  groupId: string;
+  issueCount: number;
+  showEmptyGroups: boolean;
+};
+
+export function shouldShowGroupedTableGroup(options: GroupVisibilityOptions): boolean {
+  const { cycleStatus, groupBy, groupId, issueCount, showEmptyGroups } = options;
+  if (showEmptyGroups) return true;
+  if (groupBy === "cycle" && groupId !== "None" && cycleStatus?.toLowerCase() === "current") return true;
+  return issueCount > 0;
+}
+
 export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[]): GroupedTableVirtualRow[] {
   const rows: GroupedTableVirtualRow[] = [];
 

@@ -10,6 +10,7 @@ import {
   formatEstimateTotal,
   groupedTableGroupTitle,
   sumNumericEstimateValues,
+  shouldShowGroupedTableGroup,
 } from "./utils";
 
 describe("Grouped Table summaries", () => {
@@ -29,6 +30,35 @@ describe("Grouped Table summaries", () => {
     expect(groupedTableGroupTitle("module", "None", "None")).toBe("No Module");
     expect(groupedTableGroupTitle("state", "None", "None")).toBe("None");
     expect(groupedTableGroupTitle("cycle", "cycle-id", "Sprint 117")).toBe("Sprint 117");
+  });
+
+  it("keeps the active cycle visible when it has no work items", () => {
+    expect(
+      shouldShowGroupedTableGroup({
+        groupBy: "cycle",
+        groupId: "active-cycle",
+        cycleStatus: "current",
+        issueCount: 0,
+        showEmptyGroups: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldShowGroupedTableGroup({
+        groupBy: "cycle",
+        groupId: "completed-cycle",
+        cycleStatus: "completed",
+        issueCount: 0,
+        showEmptyGroups: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldShowGroupedTableGroup({
+        groupBy: "module",
+        groupId: "empty-module",
+        issueCount: 0,
+        showEmptyGroups: false,
+      })
+    ).toBe(false);
   });
 
   it("flattens expanded groups and emits one pagination sentinel per incomplete group", () => {

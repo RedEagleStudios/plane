@@ -41,6 +41,7 @@ import {
   formatEstimateTotal,
   groupedTableGroupTitle,
   sumNumericEstimateValues,
+  shouldShowGroupedTableGroup,
 } from "./utils";
 
 const GROUPED_TABLE_ROW_HEIGHT = 44;
@@ -117,9 +118,16 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   );
 
   const visibleGroups = groups.filter((group) => {
-    if (showEmptyGroups) return true;
     const groupId = groupBy ? group.id : undefined;
-    return (getGroupIssueCount(groupId, undefined, false) ?? 0) > 0;
+    const cycleStatus =
+      groupBy === "cycle" && group.id !== "None" ? getCycleById(group.id)?.status?.toLowerCase() : undefined;
+    return shouldShowGroupedTableGroup({
+      cycleStatus,
+      groupBy,
+      groupId: group.id,
+      issueCount: getGroupIssueCount(groupId, undefined, false) ?? 0,
+      showEmptyGroups,
+    });
   });
 
   const virtualGroups = visibleGroups.map((group, groupIndex) => {
