@@ -4,11 +4,11 @@
  * See the LICENSE file for details.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  finalizeQuickAddAssets,
   getRepeatedQuickAddValues,
   isQuickAddEditableProperty,
-  plainTextToDescriptionHtml,
   QUICK_ADD_DROPDOWN_PLACEMENT,
 } from "./quick-add.utils";
 
@@ -55,10 +55,19 @@ describe("Advanced spreadsheet quick add", () => {
     expect(QUICK_ADD_DROPDOWN_PLACEMENT).toBe("top-start");
   });
 
-  it("converts inline description text to safe work-item HTML", () => {
-    expect(plainTextToDescriptionHtml("First line\n\n<script>alert('x')</script>")).toBe(
-      "<p>First line</p><p><br></p><p>&lt;script&gt;alert(&#039;x&#039;)&lt;/script&gt;</p>"
-    );
-    expect(plainTextToDescriptionHtml("   ")).toBe("<p></p>");
+  it("attaches pre-creation uploads to the created work item", async () => {
+    const updateAssets = vi.fn().mockResolvedValue(undefined);
+
+    await finalizeQuickAddAssets({
+      assetIds: ["asset-one", "asset-two"],
+      createdIssue: { id: "issue-id", project_id: "project-id" },
+      fallbackProjectId: "fallback-project-id",
+      workspaceSlug: "workspace",
+      updateAssets,
+    });
+
+    expect(updateAssets).toHaveBeenCalledWith("workspace", "project-id", "issue-id", {
+      asset_ids: ["asset-one", "asset-two"],
+    });
   });
 });

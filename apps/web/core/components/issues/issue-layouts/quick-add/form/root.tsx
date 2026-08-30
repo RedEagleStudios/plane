@@ -43,6 +43,7 @@ export type TQuickAddIssueFormRoot = {
   displayProperties?: IIssueDisplayProperties;
   spreadsheetColumnsList?: (keyof IIssueDisplayProperties)[];
   isSubmitting: boolean;
+  onAssetUpload: (assetId: string) => void;
 };
 
 export const QuickAddIssueFormRoot = observer(function QuickAddIssueFormRoot(props: TQuickAddIssueFormRoot) {
@@ -59,6 +60,7 @@ export const QuickAddIssueFormRoot = observer(function QuickAddIssueFormRoot(pro
     displayProperties,
     spreadsheetColumnsList,
     isSubmitting,
+    onAssetUpload,
     onSubmit,
     onClose,
     isEpic,
@@ -105,6 +107,7 @@ export const QuickAddIssueFormRoot = observer(function QuickAddIssueFormRoot(pro
       displayProperties={displayProperties}
       spreadsheetColumnsList={spreadsheetColumnsList}
       isSubmitting={isSubmitting}
+      onAssetUpload={onAssetUpload}
       onSubmit={onSubmit}
       isEpic={isEpic}
     />

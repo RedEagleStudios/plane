@@ -6,29 +6,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react";
+import { useParams } from "next/navigation";
 import { DEFAULT_WORK_ITEM_FORM_VALUES } from "@plane/constants";
+import type { EditorRefApi } from "@plane/editor";
 import { useTranslation } from "@plane/i18n";
 import { Button } from "@plane/propel/button";
 import { DueDatePropertyIcon, StartDatePropertyIcon } from "@plane/propel/icons";
 import type { IIssueDisplayProperties, TIssue } from "@plane/types";
-import { getDate, renderFormattedPayloadDate } from "@plane/utils";
+import { EFileAssetType } from "@plane/types";
+import { getDate, getDescriptionPlaceholderI18n, isEmptyHtmlString, renderFormattedPayloadDate } from "@plane/utils";
 import { DateDropdown } from "@/components/dropdowns/date";
 import { EstimateDropdown } from "@/components/dropdowns/estimate";
 import { PriorityDropdown } from "@/components/dropdowns/priority";
 import { StateDropdown } from "@/components/dropdowns/state/dropdown";
 import { CycleDropdown } from "@/components/dropdowns/cycle";
 import { ModuleDropdown } from "@/components/dropdowns/module/dropdown";
+import { RichTextEditor } from "@/components/editor/rich-text";
 import { IssuePropertyLabels } from "@/components/issues/issue-layouts/properties";
 import { WithDisplayPropertiesHOC } from "@/components/issues/issue-layouts/properties/with-display-properties-HOC";
 import { shouldRenderColumn } from "@/helpers/issue-filter.helper";
+import { useEditorAsset } from "@/hooks/store/use-editor-asset";
 import { useLabel } from "@/hooks/store/use-label";
+import { useWorkspace } from "@/hooks/store/use-workspace";
+import { WorkspaceService } from "@/services/workspace.service";
 import { SPREADSHEET_COLUMNS } from "../../utils";
 import type { TQuickAddIssueForm } from "../root";
-import {
-  isQuickAddEditableProperty,
-  plainTextToDescriptionHtml,
-  QUICK_ADD_DROPDOWN_PLACEMENT,
-} from "../quick-add.utils";
+import { isQuickAddEditableProperty, QUICK_ADD_DROPDOWN_PLACEMENT } from "../quick-add.utils";
+
+const workspaceService = new WorkspaceService();
 
 type QuickAddSpreadsheetColumnProps = Pick<TQuickAddIssueForm, "displayProperties" | "setValue"> & {
   issue: TIssue;
@@ -238,11 +243,15 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
     onSubmit,
     isEpic,
     isSubmitting,
+    onAssetUpload,
   } = props;
   const { t } = useTranslation();
-  const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorRef = useRef<EditorRefApi | null>(null);
   const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
-  const [descriptionText, setDescriptionText] = useState("");
+  const { workspaceSlug } = useParams();
+  const { uploadEditorAsset, duplicateEditorAsset } = useEditorAsset();
+  const { getWorkspaceBySlug } = useWorkspace();
+  const workspaceId = getWorkspaceBySlug(workspaceSlug?.toString())?.id ?? "";
   const formValues = watch();
   const issue = {
     ...DEFAULT_WORK_ITEM_FORM_VALUES,
@@ -251,19 +260,17 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
     project_id: formValues.project_id || prePopulatedData?.project_id || projectDetail.id,
   } as TIssue;
 
+  const hasDescription = !isEmptyHtmlString(formValues.description_html ?? "<p></p>", ["img"]);
+
   useEffect(() => {
     if (!formValues.description_html || formValues.description_html === "<p></p>") {
-      setDescriptionText("");
+      editorRef.current?.clearEditor();
       setIsDescriptionOpen(false);
     }
   }, [formValues.description_html]);
 
-  useEffect(() => {
-    if (isDescriptionOpen) descriptionRef.current?.focus();
-  }, [isDescriptionOpen]);
-
   const handleCancelDescription = () => {
-    setDescriptionText("");
+    editorRef.current?.clearEditor();
     setValue("description_html", "<p></p>", { shouldDirty: true });
     setIsDescriptionOpen(false);
   };
@@ -312,29 +319,52 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
           </table>
         </div>
         <div className="border-x-[0.5px] border-b-[0.5px] border-subtle bg-surface-1">
-          {isDescriptionOpen && (
+          {isDescriptionOpen && workspaceSlug && (
             <div className="border-b-[0.5px] border-subtle px-page-x py-2">
-              <textarea
-                ref={descriptionRef}
-                value={descriptionText}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setDescriptionText(value);
-                  setValue("description_html", plainTextToDescriptionHtml(value), { shouldDirty: true });
+              <RichTextEditor
+                editable
+                id="spreadsheet-quick-add-editor"
+                initialValue={formValues.description_html ?? "<p></p>"}
+                workspaceSlug={workspaceSlug.toString()}
+                workspaceId={workspaceId}
+                projectId={projectDetail.id}
+                onChange={(_description: object, descriptionHtml: string) =>
+                  setValue("description_html", descriptionHtml, { shouldDirty: true })
+                }
+                onEnterKeyPress={onSubmit}
+                ref={editorRef}
+                placeholder={(isFocused, description) => t(getDescriptionPlaceholderI18n(isFocused, description))}
+                searchMentionCallback={async (payload) =>
+                  await workspaceService.searchEntity(workspaceSlug.toString(), {
+                    ...payload,
+                    project_id: projectDetail.id,
+                  })
+                }
+                containerClassName="min-h-32 max-h-64 overflow-y-auto pt-3"
+                uploadFile={async (blockId, file) => {
+                  const { asset_id } = await uploadEditorAsset({
+                    blockId,
+                    data: {
+                      entity_identifier: "",
+                      entity_type: EFileAssetType.ISSUE_DESCRIPTION,
+                    },
+                    file,
+                    projectId: projectDetail.id,
+                    workspaceSlug: workspaceSlug.toString(),
+                  });
+                  onAssetUpload(asset_id);
+                  return asset_id;
                 }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                    event.preventDefault();
-                    onSubmit();
-                  } else if (event.key === "Escape" && descriptionText.trim().length === 0) {
-                    event.preventDefault();
-                    setIsDescriptionOpen(false);
-                  }
+                duplicateFile={async (assetId) => {
+                  const { asset_id } = await duplicateEditorAsset({
+                    assetId,
+                    entityType: EFileAssetType.ISSUE_DESCRIPTION,
+                    projectId: projectDetail.id,
+                    workspaceSlug: workspaceSlug.toString(),
+                  });
+                  onAssetUpload(asset_id);
+                  return asset_id;
                 }}
-                rows={3}
-                placeholder="Add a description…"
-                aria-label="Work item description"
-                className="max-h-40 min-h-20 w-full resize-y bg-transparent text-13 text-primary outline-none placeholder:text-placeholder"
               />
             </div>
           )}
@@ -344,7 +374,7 @@ export const SpreadsheetQuickAddIssueForm = observer(function SpreadsheetQuickAd
               className="text-12 font-medium text-secondary hover:text-primary"
               onClick={() => setIsDescriptionOpen(true)}
             >
-              {descriptionText.length > 0 ? "Edit description" : "Add description"}
+              {hasDescription ? "Edit description" : "Add description"}
             </button>
             <div className="flex items-center gap-2">
               <span className="hidden text-11 text-placeholder md:inline">

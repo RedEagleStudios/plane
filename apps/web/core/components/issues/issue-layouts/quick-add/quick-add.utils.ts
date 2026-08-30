@@ -16,21 +16,26 @@ export function getRepeatedQuickAddValues(values: Partial<TIssue>): Partial<TIss
   };
 }
 
-export function plainTextToDescriptionHtml(value: string): string {
-  if (value.trim().length === 0) return "<p></p>";
+type FinalizeQuickAddAssetsArgs = {
+  assetIds: string[];
+  createdIssue: Pick<TIssue, "id" | "project_id">;
+  fallbackProjectId: string;
+  workspaceSlug: string;
+  updateAssets: (
+    workspaceSlug: string,
+    projectId: string,
+    issueId: string,
+    data: { asset_ids: string[] }
+  ) => Promise<unknown>;
+};
 
-  return value
-    .split("\n")
-    .map((line) => {
-      const escapedLine = line
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-      return escapedLine.length > 0 ? `<p>${escapedLine}</p>` : "<p><br></p>";
-    })
-    .join("");
+export async function finalizeQuickAddAssets(args: FinalizeQuickAddAssetsArgs): Promise<void> {
+  const { assetIds, createdIssue, fallbackProjectId, workspaceSlug, updateAssets } = args;
+  if (assetIds.length === 0) return;
+
+  await updateAssets(workspaceSlug, createdIssue.project_id ?? fallbackProjectId, createdIssue.id, {
+    asset_ids: assetIds,
+  });
 }
 
 export function isQuickAddEditableProperty(property: keyof IIssueDisplayProperties): boolean {

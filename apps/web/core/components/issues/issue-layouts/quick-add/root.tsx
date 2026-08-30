@@ -17,10 +17,13 @@ import { setPromiseToast } from "@plane/propel/toast";
 import type { IIssueDisplayProperties, IProject, TIssue } from "@plane/types";
 import { EIssueLayoutTypes } from "@plane/types";
 import { cn, createIssuePayload } from "@plane/utils";
+import { FileService } from "@/services/file.service";
 // local imports
 import { QuickAddIssueFormRoot } from "./form";
 import { CreateIssueToastActionItems } from "../../create-issue-toast-action-items";
-import { getRepeatedQuickAddValues } from "./quick-add.utils";
+import { finalizeQuickAddAssets, getRepeatedQuickAddValues } from "./quick-add.utils";
+
+const fileService = new FileService();
 
 export type TQuickAddIssueForm = {
   ref: React.RefObject<HTMLFormElement>;
@@ -36,6 +39,7 @@ export type TQuickAddIssueForm = {
   displayProperties?: IIssueDisplayProperties;
   spreadsheetColumnsList?: (keyof IIssueDisplayProperties)[];
   isSubmitting: boolean;
+  onAssetUpload: (assetId: string) => void;
 };
 
 export type TQuickAddIssueButton = {
@@ -81,6 +85,7 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
   const { workspaceSlug, projectId } = useParams();
   // states
   const [isOpen, setIsOpen] = useState(isQuickAddOpen ?? false);
+  const [uploadedAssetIds, setUploadedAssetIds] = useState<string[]>([]);
   // form info
   const {
     reset,
@@ -99,7 +104,10 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
   }, [isQuickAddOpen]);
 
   useEffect(() => {
-    if (!isOpen) reset({ ...defaultValues });
+    if (!isOpen) {
+      reset({ ...defaultValues });
+      setUploadedAssetIds([]);
+    }
   }, [isOpen, reset]);
 
   // oxlint-disable-next-line no-shadow
@@ -116,11 +124,6 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
 
     const shouldPreserveColumnValues =
       layout === EIssueLayoutTypes.SPREADSHEET || layout === EIssueLayoutTypes.GROUPED_SPREADSHEET;
-    reset(
-      shouldPreserveColumnValues
-        ? getRepeatedQuickAddValues({ ...prePopulatedData, ...formData })
-        : { ...defaultValues }
-    );
 
     const payload = createIssuePayload(projectId.toString(), {
       // oxlint-disable-next-line unicorn/no-useless-fallback-in-spread
@@ -129,7 +132,18 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
     });
 
     if (quickAddCallback) {
-      const quickAddPromise = quickAddCallback(projectId.toString(), { ...payload });
+      const quickAddPromise = quickAddCallback(projectId.toString(), { ...payload }).then(async (createdIssue) => {
+        if (createdIssue) {
+          await finalizeQuickAddAssets({
+            assetIds: uploadedAssetIds,
+            createdIssue,
+            fallbackProjectId: projectId.toString(),
+            workspaceSlug: workspaceSlug.toString(),
+            updateAssets: async (...args) => await fileService.updateBulkProjectAssetsUploadStatus(...args),
+          });
+        }
+        return createdIssue;
+      });
       setPromiseToast<any>(quickAddPromise, {
         loading: isEpic ? t("epic.adding") : t("issue.adding"),
         success: {
@@ -151,7 +165,15 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
         },
       });
 
-      await quickAddPromise;
+      const createdIssue = await quickAddPromise;
+      if (createdIssue) {
+        setUploadedAssetIds([]);
+        reset(
+          shouldPreserveColumnValues
+            ? getRepeatedQuickAddValues({ ...prePopulatedData, ...formData })
+            : { ...defaultValues }
+        );
+      }
     }
   };
 
@@ -179,6 +201,7 @@ export const QuickAddIssueRoot = observer(function QuickAddIssueRoot(props: TQui
           displayProperties={displayProperties}
           spreadsheetColumnsList={spreadsheetColumnsList}
           isSubmitting={isSubmitting}
+          onAssetUpload={(assetId) => setUploadedAssetIds((currentAssetIds) => [...currentAssetIds, assetId])}
           onSubmit={handleSubmit(onSubmitHandler)}
           onClose={() => handleIsOpen(false)}
           isEpic={isEpic}
