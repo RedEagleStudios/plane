@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { autorun, observable, runInAction } from "mobx";
 import { removeIssueIdFromGroup } from "./grouped-issue.utils";
 
 describe("Grouped work-item membership", () => {
@@ -15,6 +16,18 @@ describe("Grouped work-item membership", () => {
     expect(updatedIssueIds).toEqual(["other-issue"]);
     expect(updatedIssueIds).not.toBe(issueIds);
     expect(issueIds).toEqual(["other-issue", "multi-module-issue"]);
+  });
+  it("notifies observers when a work item leaves one of multiple groups", () => {
+    const group = observable({ issueIds: ["other-issue", "multi-module-issue"] });
+    const observedGroups: string[][] = [];
+    const dispose = autorun(() => observedGroups.push([...group.issueIds]));
+
+    runInAction(() => {
+      group.issueIds = removeIssueIdFromGroup(group.issueIds, "multi-module-issue");
+    });
+
+    expect(observedGroups).toEqual([["other-issue", "multi-module-issue"], ["other-issue"]]);
+    dispose();
   });
 
   it("keeps the existing reference when the work item is not in the group", () => {
