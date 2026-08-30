@@ -27,6 +27,7 @@ export interface IPartialProject {
   workspace: IWorkspace | string;
   cycle_view: boolean;
   issue_views_view: boolean;
+  weekly_cycle_auto_create?: boolean;
   module_view: boolean;
   single_module_per_issue?: boolean;
   page_view: boolean;

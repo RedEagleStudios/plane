@@ -82,6 +82,7 @@ class ProjectCreateSerializer(BaseSerializer):
             "module_view",
             "single_module_per_issue",
             "cycle_view",
+            "weekly_cycle_auto_create",
             "issue_views_view",
             "page_view",
             "intake_view",

@@ -51,6 +51,10 @@ app.conf.beat_schedule = {
         "task": "plane.license.bgtasks.telemetry_metrics.push_instance_metrics",
         "schedule": schedule(run_every=timedelta(minutes=METRICS_PUSH_INTERVAL_MINUTES)),
     },
+    "create-weekly-project-cycles": {
+        "task": "plane.bgtasks.weekly_cycle_task.create_weekly_project_cycles",
+        "schedule": crontab(minute=0),  # Hourly so Friday is evaluated in each project's timezone
+    },
     # Occurs once every day
     "check-every-day-to-delete-hard-delete": {
         "task": "plane.bgtasks.deletion_task.hard_delete",

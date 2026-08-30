@@ -46,13 +46,22 @@ function FeaturesCyclesSettingsPage({ params }: Route.ComponentProps) {
           title={t("project_settings.features.cycles.title")}
           description={t("project_settings.features.cycles.description")}
         />
-        <div className="mt-7">
+        <div className="mt-7 space-y-4">
           <ProjectSettingsFeatureControlItem
             title={t("project_settings.features.cycles.toggle_title")}
             description={t("project_settings.features.cycles.toggle_description")}
             featureProperty="cycle_view"
             projectId={projectId}
             value={!!currentProjectDetails?.cycle_view}
+            workspaceSlug={workspaceSlug}
+          />
+          <ProjectSettingsFeatureControlItem
+            title="Create the next cycle automatically every Friday"
+            description="The next Saturday–Friday cycle inherits the latest cycle owner and timezone. Its trailing number increments automatically, for example Sprint 1 → Sprint 2."
+            disabled={!currentProjectDetails?.cycle_view}
+            featureProperty="weekly_cycle_auto_create"
+            projectId={projectId}
+            value={!!currentProjectDetails?.weekly_cycle_auto_create}
             workspaceSlug={workspaceSlug}
           />
         </div>

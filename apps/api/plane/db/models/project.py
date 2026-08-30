@@ -93,6 +93,7 @@ class Project(BaseModel):
     module_view = models.BooleanField(default=False)
     single_module_per_issue = models.BooleanField(default=False)
     cycle_view = models.BooleanField(default=False)
+    weekly_cycle_auto_create = models.BooleanField(default=False)
     issue_views_view = models.BooleanField(default=False)
     page_view = models.BooleanField(default=True)
     intake_view = models.BooleanField(default=False)
