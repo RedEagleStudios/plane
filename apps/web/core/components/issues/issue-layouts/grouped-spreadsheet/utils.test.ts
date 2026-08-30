@@ -34,15 +34,35 @@ describe("Grouped Table summaries", () => {
   it("flattens expanded groups and emits one pagination sentinel per incomplete group", () => {
     expect(
       buildGroupedTableVirtualRows([
-        { id: "current", issueIds: ["one", "two"], totalCount: 3, isExpanded: true },
-        { id: "history", issueIds: ["three"], totalCount: 4, isExpanded: false },
+        { id: "current", issueIds: ["one", "two"], totalCount: 3, isExpanded: true, isLoadingMore: false },
+        { id: "history", issueIds: ["three"], totalCount: 4, isExpanded: false, isLoadingMore: false },
       ])
     ).toEqual([
       { type: "group", key: "group:current", groupId: "current" },
       { type: "issue", key: "issue:one", groupId: "current", issueId: "one" },
       { type: "issue", key: "issue:two", groupId: "current", issueId: "two" },
-      { type: "load-more", key: "load-more:current:2", groupId: "current", loadedCount: 2 },
+      {
+        type: "load-more",
+        key: "load-more:current:2",
+        groupId: "current",
+        loadedCount: 2,
+        isLoading: false,
+      },
       { type: "group", key: "group:history", groupId: "history" },
     ]);
+  });
+
+  it("marks the pagination sentinel as loading only while its group is fetching", () => {
+    expect(
+      buildGroupedTableVirtualRows([
+        { id: "current", issueIds: ["one"], totalCount: 2, isExpanded: true, isLoadingMore: true },
+      ])
+    ).toContainEqual({
+      type: "load-more",
+      key: "load-more:current:1",
+      groupId: "current",
+      loadedCount: 1,
+      isLoading: true,
+    });
   });
 });

@@ -13,12 +13,13 @@ export interface GroupedTableVirtualGroup {
   issueIds: string[];
   totalCount: number;
   isExpanded: boolean;
+  isLoadingMore: boolean;
 }
 
 export type GroupedTableVirtualRow =
   | { type: "group"; key: string; groupId: string }
   | { type: "issue"; key: string; groupId: string; issueId: string }
-  | { type: "load-more"; key: string; groupId: string; loadedCount: number };
+  | { type: "load-more"; key: string; groupId: string; loadedCount: number; isLoading: boolean };
 
 export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[]): GroupedTableVirtualRow[] {
   const rows: GroupedTableVirtualRow[] = [];
@@ -37,6 +38,7 @@ export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[])
         key: `load-more:${group.id}:${group.issueIds.length}`,
         groupId: group.id,
         loadedCount: group.issueIds.length,
+        isLoading: group.isLoadingMore,
       });
     }
   }

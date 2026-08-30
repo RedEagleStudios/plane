@@ -100,7 +100,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const { getCycleById } = useCycle();
   const estimate = useEstimate(currentProjectDetails?.estimate ?? undefined);
   const {
-    issues: { getGroupIssueCount },
+    issues: { getGroupIssueCount, getIssueLoader },
   } = useIssuesStore();
   const { isMobile } = usePlatformOS();
   const [mobileExpansionOverrides, setMobileExpansionOverrides] = useState<Record<string, boolean>>({});
@@ -134,6 +134,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
       id: group.id,
       issueIds,
       totalCount: getGroupIssueCount(groupId, undefined, false) ?? issueIds.length,
+      isLoadingMore: getIssueLoader(groupId, undefined) === "pagination",
       isExpanded: isMobile
         ? (mobileExpansionOverrides[group.id] ?? (isPersistedExpanded && isMobileDefaultExpanded))
         : isPersistedExpanded,
@@ -179,15 +180,28 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
     virtualItems.length > 0 ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
 
   useEffect(() => {
+    requestedPageKeys.current.clear();
+  }, [groupBy, groupedIssueIds]);
+
+  const requestMoreIssues = useCallback(
+    (groupId: string, pageKey: string, isLoading: boolean) => {
+      if (isLoading || requestedPageKeys.current.has(pageKey)) return;
+
+      requestedPageKeys.current.add(pageKey);
+      void Promise.resolve(loadMoreIssues(groupBy ? groupId : undefined)).catch(() => {
+        requestedPageKeys.current.delete(pageKey);
+      });
+    },
+    [groupBy, loadMoreIssues]
+  );
+
+  useEffect(() => {
     for (const virtualItem of virtualItems) {
       const row = virtualRows[virtualItem.index];
-      if (row?.type !== "load-more" || requestedPageKeys.current.has(row.key)) continue;
-      requestedPageKeys.current.add(row.key);
-      Promise.resolve(loadMoreIssues(groupBy ? row.groupId : undefined)).catch(() => {
-        requestedPageKeys.current.delete(row.key);
-      });
+      if (row?.type !== "load-more") continue;
+      requestMoreIssues(row.groupId, row.key, row.isLoading);
     }
-  }, [groupBy, loadMoreIssues, virtualItems, virtualRows]);
+  }, [requestMoreIssues, virtualItems, virtualRows]);
 
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
@@ -268,7 +282,20 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                             colSpan={columnCount}
                             className="h-11 border-b border-subtle px-page-x text-12 text-tertiary"
                           >
-                            Loading more work items…
+                            {row.isLoading ? (
+                              "Loading more work items…"
+                            ) : (
+                              <button
+                                type="button"
+                                className="font-medium text-accent-primary hover:text-accent-secondary hover:underline"
+                                onClick={() => {
+                                  requestedPageKeys.current.delete(row.key);
+                                  requestMoreIssues(row.groupId, row.key, false);
+                                }}
+                              >
+                                Load more work items
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
