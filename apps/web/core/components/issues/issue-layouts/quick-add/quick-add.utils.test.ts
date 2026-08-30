@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { getRepeatedQuickAddValues, isQuickAddEditableProperty } from "./quick-add.utils";
+import { getRepeatedQuickAddValues, isQuickAddEditableProperty, QUICK_ADD_DROPDOWN_PLACEMENT } from "./quick-add.utils";
 
 describe("Advanced spreadsheet quick add", () => {
   it("preserves selected column values between submissions while clearing text", () => {
@@ -44,5 +44,9 @@ describe("Advanced spreadsheet quick add", () => {
     expect(isQuickAddEditableProperty("created_on")).toBe(false);
     expect(isQuickAddEditableProperty("updated_on")).toBe(false);
     expect(isQuickAddEditableProperty("attachment_count")).toBe(false);
+  });
+
+  it("opens footer dropdowns above their controls", () => {
+    expect(QUICK_ADD_DROPDOWN_PLACEMENT).toBe("top-start");
   });
 });

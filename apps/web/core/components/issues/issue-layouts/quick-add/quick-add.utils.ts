@@ -4,7 +4,9 @@
  * See the LICENSE file for details.
  */
 
+import type { Placement } from "@popperjs/core";
 import type { IIssueDisplayProperties, TIssue } from "@plane/types";
+export const QUICK_ADD_DROPDOWN_PLACEMENT: Placement = "top-start";
 
 export function getRepeatedQuickAddValues(values: Partial<TIssue>): Partial<TIssue> {
   return {
