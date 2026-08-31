@@ -68,6 +68,7 @@ from plane.bgtasks.issue_activities_task import issue_activity
 from plane.db.models import (
     Issue,
     IssueActivity,
+    IssueSubscriber,
     FileAsset,
     IssueComment,
     IssueLink,
@@ -585,10 +586,15 @@ class IssueDetailAPIEndpoint(BaseAPIView):
             .annotate(count=Func(F("id"), function="Count"))
             .values("count")
         ).get(workspace__slug=slug, project_id=project_id, pk=pk)
-        return Response(
-            IssueSerializer(issue, fields=self.fields, expand=self.expand).data,
-            status=status.HTTP_200_OK,
-        )
+        data = IssueSerializer(issue, fields=self.fields, expand=self.expand).data
+        if request.query_params.get("include_subscribers") == "true":
+            data["subscribers"] = [
+                str(subscriber_id)
+                for subscriber_id in IssueSubscriber.objects.filter(
+                    issue=issue, deleted_at__isnull=True
+                ).values_list("subscriber_id", flat=True)
+            ]
+        return Response(data, status=status.HTTP_200_OK)
 
     @work_item_docs(
         operation_id="put_work_item",

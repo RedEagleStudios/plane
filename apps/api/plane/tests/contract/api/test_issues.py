@@ -5,7 +5,7 @@
 import pytest
 from rest_framework import status
 
-from plane.db.models import Issue, Project, ProjectMember, State
+from plane.db.models import Issue, IssueSubscriber, Project, ProjectMember, State
 
 
 @pytest.fixture
@@ -94,3 +94,24 @@ class TestIssueListOrderByInjection:
             assert response.status_code == status.HTTP_200_OK, (
                 f"order_by={value!r} got {response.status_code}: {response.data!r}"
             )
+
+
+@pytest.mark.contract
+class TestIssueSubscribers:
+    @pytest.mark.django_db
+    def test_detail_can_include_subscribers(self, api_key_client, workspace, project, issue, create_user):
+        IssueSubscriber.objects.create(
+            issue=issue,
+            subscriber=create_user,
+            workspace=workspace,
+            project=project,
+        )
+        url = f"/api/v1/workspaces/{workspace.slug}/projects/{project.id}/issues/{issue.id}/"
+
+        response = api_key_client.get(url, {"fields": "id", "include_subscribers": "true"})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == {
+            "id": issue.id,
+            "subscribers": [str(create_user.id)],
+        }
