@@ -95,6 +95,33 @@ class TestGenericAssetCrossWorkspaceIDOR:
         mock_storage.return_value.generate_presigned_url.assert_not_called()
 
     @pytest.mark.django_db
+    def test_member_can_get_own_workspace_asset(self, api_key_client, workspace, create_user):
+        asset = FileAsset.objects.create(
+            attributes={"name": "image.png", "type": "image/png", "size": 128},
+            asset=f"{workspace.id}/image.png",
+            size=128,
+            workspace=workspace,
+            created_by=create_user,
+            entity_type=FileAsset.EntityTypeContext.ISSUE_ATTACHMENT,
+            is_uploaded=True,
+            storage_metadata={"size": 128},
+        )
+
+        with mock.patch("plane.api.views.asset.S3Storage") as mock_storage:
+            mock_storage.return_value.generate_presigned_url.return_value = "https://signed.example/image.png"
+            response = api_key_client.get(self.detail_url(workspace.slug, asset.id))
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == {
+            "asset_id": str(asset.id),
+            "asset_url": "https://signed.example/image.png",
+            "asset_name": "image.png",
+            "asset_type": "image/png",
+        }
+        mock_storage.assert_called_once_with(request=mock.ANY)
+
+
+    @pytest.mark.django_db
     def test_post_cross_workspace_asset_returns_403(self, api_key_client, victim_workspace):
         """POST (upload) into another workspace must be forbidden and must not
         plant an asset row in the victim workspace."""
