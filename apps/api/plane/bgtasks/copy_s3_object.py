@@ -18,6 +18,8 @@ from plane.settings.storage import S3Storage
 from celery import shared_task
 from plane.utils.url import normalize_url_path
 
+DESCRIPTION_ASSET_TAGS = ("image-component", "video-component")
+
 
 def get_entity_id_field(entity_type, entity_id):
     entity_mapping = {
@@ -56,8 +58,10 @@ def replace_asset_ids(html, tag, duplicated_assets):
         return html
 
 
-def update_description(entity, duplicated_assets, tag):
-    updated_html = replace_asset_ids(entity.description_html, tag, duplicated_assets)
+def update_description(entity, duplicated_assets, tags):
+    updated_html = entity.description_html
+    for tag in tags:
+        updated_html = replace_asset_ids(updated_html, tag, duplicated_assets)
     entity.description_html = updated_html
     entity.save()
     return updated_html
@@ -136,11 +140,13 @@ def copy_s3_objects_of_description_and_assets(entity_name, entity_identifier, pr
             raise ValueError(f"Unsupported entity_name: {entity_name}")
 
         entity = model_class.objects.get(id=entity_identifier)
-        asset_ids = extract_asset_ids(entity.description_html, "image-component")
+        asset_ids = {
+            asset_id for tag in DESCRIPTION_ASSET_TAGS for asset_id in extract_asset_ids(entity.description_html, tag)
+        }
 
         duplicated_assets = copy_assets(entity, entity_identifier, project_id, asset_ids, user_id)
 
-        updated_html = update_description(entity, duplicated_assets, "image-component")
+        updated_html = update_description(entity, duplicated_assets, DESCRIPTION_ASSET_TAGS)
 
         external_data = sync_with_external_service(entity_name, updated_html)
 

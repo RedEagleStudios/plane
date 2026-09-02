@@ -27,6 +27,8 @@ const generalSelectors = [
   ".issue-embed",
   ".image-component",
   ".image-upload-component",
+  ".video-component",
+  ".video-upload-component",
   ".editor-callout-component",
   ".editor-embed-component",
   ".editor-drawio-component",
@@ -221,7 +223,7 @@ export const DragHandlePlugin = (options: SideMenuPluginProps): SideMenuHandleOp
       dragHandleElement?.classList.add("drag-handle-hidden");
   };
 
-  const view = (view: EditorView, sideMenu: HTMLDivElement | null) => {
+  const createPluginView = (view: EditorView, sideMenu: HTMLDivElement | null) => {
     dragHandleElement = createDragHandleElement();
     dragHandleElement.addEventListener("dragstart", (e) => handleDragStart(e, view));
     dragHandleElement.addEventListener("dragend", (e) => handleDragEnd(e, view));
@@ -349,7 +351,7 @@ export const DragHandlePlugin = (options: SideMenuPluginProps): SideMenuHandleOp
   };
 
   return {
-    view,
+    view: createPluginView,
     domEvents,
   };
 };

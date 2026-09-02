@@ -4,8 +4,8 @@
  * See the LICENSE file for details.
  */
 
-import TaskItem from "@tiptap/extension-task-item";
-import TaskList from "@tiptap/extension-task-list";
+import { TaskItem } from "@tiptap/extension-task-item";
+import { TaskList } from "@tiptap/extension-task-list";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { Underline } from "@tiptap/extension-underline";
 // plane editor imports
@@ -16,6 +16,7 @@ import { CustomCodeBlockExtensionWithoutProps } from "./code/without-props";
 import { CustomCodeInlineExtension } from "./code-inline";
 import { CustomColorExtension } from "./custom-color";
 import { CustomImageExtensionConfig } from "./custom-image/extension-config";
+import { CustomVideoExtensionConfig } from "./custom-video/extension-config";
 import { CustomLinkExtension } from "./custom-link";
 import { EmojiExtension } from "./emoji/extension";
 import { CustomHorizontalRule } from "./horizontal-rule";
@@ -37,6 +38,7 @@ export const CoreEditorExtensionsWithoutProps = [
   CustomLinkExtension,
   ImageExtensionConfig,
   CustomImageExtensionConfig,
+  CustomVideoExtensionConfig,
   Underline,
   TextStyle,
   TaskList.configure({

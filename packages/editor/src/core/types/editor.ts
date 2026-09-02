@@ -56,6 +56,7 @@ export type TEditorCommands =
   | "code"
   | "table"
   | "image"
+  | "video"
   | "divider"
   | "link"
   | "issue-embed"

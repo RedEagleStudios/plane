@@ -27,6 +27,13 @@ from plane.utils.path_validator import sanitize_filename
 from plane.bgtasks.storage_metadata_task import get_asset_object_metadata
 from plane.throttles.asset import AssetRateThrottle
 
+EDITOR_ASSET_ENTITY_TYPES = {
+    FileAsset.EntityTypeContext.ISSUE_DESCRIPTION,
+    FileAsset.EntityTypeContext.PAGE_DESCRIPTION,
+    FileAsset.EntityTypeContext.COMMENT_DESCRIPTION,
+    FileAsset.EntityTypeContext.DRAFT_ISSUE_DESCRIPTION,
+}
+
 
 class UserAssetsV2Endpoint(BaseAPIView):
     """This endpoint is used to upload user profile images."""
@@ -363,20 +370,13 @@ class WorkspaceFileAssetEndpoint(BaseAPIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-        # Check if the file type is allowed
-        allowed_types = [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/jpg",
-            "image/gif",
-        ]
+        # Description assets support inline images and videos; other assets remain image-only.
+        allowed_types = (
+            settings.EDITOR_ASSET_MIME_TYPES if entity_type in EDITOR_ASSET_ENTITY_TYPES else settings.IMAGE_MIME_TYPES
+        )
         if type not in allowed_types:
             return Response(
-                {
-                    "error": "Invalid file type. Only JPEG, PNG, WebP, JPG and GIF files are allowed.",
-                    "status": False,
-                },
+                {"error": "Invalid file type for this asset.", "status": False},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -590,20 +590,13 @@ class ProjectAssetEndpoint(BaseAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check if the file type is allowed
-        allowed_types = [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/jpg",
-            "image/gif",
-        ]
+        # Description assets support inline images and videos; other assets remain image-only.
+        allowed_types = (
+            settings.EDITOR_ASSET_MIME_TYPES if entity_type in EDITOR_ASSET_ENTITY_TYPES else settings.IMAGE_MIME_TYPES
+        )
         if type not in allowed_types:
             return Response(
-                {
-                    "error": "Invalid file type. Only JPEG, PNG, WebP, JPG and GIF files are allowed.",
-                    "status": False,
-                },
+                {"error": "Invalid file type for this asset.", "status": False},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

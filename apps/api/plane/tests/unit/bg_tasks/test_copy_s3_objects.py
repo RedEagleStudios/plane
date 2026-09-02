@@ -29,7 +29,7 @@ class TestCopyS3Objects:
             name="Test Issue",
             workspace=workspace,
             project_id=project.id,
-            description_html='<div><image-component src="35e8b958-6ee5-43ce-ae56-fb0e776f421e"></image-component><image-component src="97988198-274f-4dfe-aa7a-4c0ffc684214"></image-component></div>',  # noqa: E501
+            description_html='<div><image-component src="35e8b958-6ee5-43ce-ae56-fb0e776f421e"></image-component><image-component src="97988198-274f-4dfe-aa7a-4c0ffc684214"></image-component><video-component src="2c37ba1b-68eb-42a8-a484-7cc948b80bd5"></video-component></div>',  # noqa: E501
         )
 
     @pytest.fixture
@@ -66,6 +66,19 @@ class TestCopyS3Objects:
             id="97988198-274f-4dfe-aa7a-4c0ffc684214",
             entity_type="ISSUE_DESCRIPTION",
         )
+        FileAsset.objects.create(
+            issue=issue,
+            workspace=workspace,
+            project=project,
+            asset="workspace1/test-video.mp4",
+            attributes={
+                "name": "test-video.mp4",
+                "size": 100,
+                "type": "video/mp4",
+            },
+            id="2c37ba1b-68eb-42a8-a484-7cc948b80bd5",
+            entity_type="ISSUE_DESCRIPTION",
+        )
 
         issue.save()
 
@@ -85,7 +98,7 @@ class TestCopyS3Objects:
             copy_s3_objects_of_description_and_assets("ISSUE", issue.id, project.id, "test-workspace", create_user.id)
 
         # Assert that copy_object was called for each asset
-        assert mock_storage_instance.copy_object.call_count == 2
+        assert mock_storage_instance.copy_object.call_count == 3
 
         # Get the updated issue and its new assets
         updated_issue = Issue.objects.get(id=issue.id)
@@ -95,7 +108,9 @@ class TestCopyS3Objects:
         )
 
         # Verify new assets were created
-        assert new_assets.count() == 4  # 2 original + 2 copied
+        assert new_assets.count() == 6  # 3 original + 3 copied
+        assert "2c37ba1b-68eb-42a8-a484-7cc948b80bd5" not in updated_issue.description_html
+        assert "<video-component" in updated_issue.description_html
 
     @pytest.mark.django_db
     @patch("plane.bgtasks.copy_s3_object.S3Storage")

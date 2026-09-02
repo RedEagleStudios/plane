@@ -23,6 +23,7 @@ import {
   Smile,
   Table,
   TextQuote,
+  VideoIcon,
 } from "lucide-react";
 // constants
 import { COLORS_LIST } from "@/constants/common";
@@ -37,6 +38,7 @@ import {
   toggleTextColor,
   toggleBackgroundColor,
   insertImage,
+  insertVideo,
   insertCallout,
   setText,
   openEmojiPicker,
@@ -301,6 +303,19 @@ export const getSlashCommandFilteredSections =
         pushAfter: "code",
       });
     }
+    if (!disabledExtensions?.includes("video")) {
+      internalAdditionalOptions.push({
+        commandKey: "video",
+        key: "video",
+        title: "Video",
+        icon: <VideoIcon className="size-3.5" />,
+        description: "Insert a video",
+        searchTerms: ["video", "movie", "media", "upload"],
+        command: ({ editor, range }: CommandProps) => insertVideo({ editor, event: "insert", range }),
+        section: "general",
+        pushAfter: "image",
+      });
+    }
 
     [
       ...internalAdditionalOptions,
@@ -319,19 +334,17 @@ export const getSlashCommandFilteredSections =
       }
     });
 
-    const filteredSlashSections = SLASH_COMMAND_SECTIONS.map((section) => ({
-      ...section,
-      items: section.items.filter((item) => {
-        if (typeof query !== "string") return;
+    if (typeof query !== "string") return [];
 
-        const lowercaseQuery = query.toLowerCase();
-        return (
+    const lowercaseQuery = query.toLowerCase();
+    for (const section of SLASH_COMMAND_SECTIONS) {
+      section.items = section.items.filter(
+        (item) =>
           item.title.toLowerCase().includes(lowercaseQuery) ||
           item.description.toLowerCase().includes(lowercaseQuery) ||
-          item.searchTerms.some((t) => t.includes(lowercaseQuery))
-        );
-      }),
-    }));
+          item.searchTerms.some((term) => term.includes(lowercaseQuery))
+      );
+    }
 
-    return filteredSlashSections.filter((s) => s.items.length !== 0);
+    return SLASH_COMMAND_SECTIONS.filter((section) => section.items.length !== 0);
   };

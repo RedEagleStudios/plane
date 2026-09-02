@@ -35,6 +35,14 @@ COMPONENT_MAP = {
             "entity_identifier": m.get("src"),
         },
     },
+    "video-component": {
+        "attributes": ["id", "src"],
+        "extract": lambda m: {
+            "entity_name": "video",
+            "entity_type": None,
+            "entity_identifier": m.get("src"),
+        },
+    },
 }
 
 component_map = {

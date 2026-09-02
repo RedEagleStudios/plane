@@ -13,6 +13,7 @@ import {
   Heading3,
   TextQuote,
   ImageIcon,
+  VideoIcon,
   TableIcon,
   ListIcon,
   ListOrderedIcon,
@@ -36,6 +37,7 @@ import { CORE_EXTENSIONS } from "@/constants/extension";
 import {
   insertHorizontalRule,
   insertImage,
+  insertVideo,
   insertTableCommand,
   setLinkEditor,
   setText,
@@ -198,6 +200,14 @@ export const ImageItem = (editor: Editor): EditorMenuItem<"image"> => ({
   icon: ImageIcon,
 });
 
+export const VideoItem = (editor: Editor): EditorMenuItem<"video"> => ({
+  key: "video",
+  name: "Video",
+  isActive: () => editor.isActive(CORE_EXTENSIONS.CUSTOM_VIDEO),
+  command: () => insertVideo({ editor, event: "insert", pos: editor.state.selection.from }),
+  icon: VideoIcon,
+});
+
 export const HorizontalRuleItem = (editor: Editor): EditorMenuItem<"divider"> =>
   ({
     key: "divider",
@@ -277,6 +287,7 @@ export const getEditorMenuItems = (editor: Editor | null): EditorMenuItem<TEdito
     QuoteItem(editor),
     TableItem(editor),
     ImageItem(editor),
+    VideoItem(editor),
     HorizontalRuleItem(editor),
     LinkItem(editor),
     TextColorItem(editor),

@@ -106,20 +106,19 @@ class EntityAssetEndpoint(BaseAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check if the file type is allowed
-        allowed_types = [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/jpg",
-            "image/gif",
-        ]
+        # Published work-item and comment descriptions support inline images and videos.
+        allowed_types = (
+            settings.EDITOR_ASSET_MIME_TYPES
+            if entity_type
+            in {
+                FileAsset.EntityTypeContext.ISSUE_DESCRIPTION,
+                FileAsset.EntityTypeContext.COMMENT_DESCRIPTION,
+            }
+            else settings.IMAGE_MIME_TYPES
+        )
         if type not in allowed_types:
             return Response(
-                {
-                    "error": "Invalid file type. Only JPEG, PNG, WebP, JPG and GIF files are allowed.",
-                    "status": False,
-                },
+                {"error": "Invalid file type for this asset.", "status": False},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

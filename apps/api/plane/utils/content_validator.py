@@ -75,6 +75,7 @@ CUSTOM_TAGS = {
     "label",
     "input",
     "image-component",
+    "video-component",
 }
 ALLOWED_TAGS = nh3.ALLOWED_TAGS | CUSTOM_TAGS
 
@@ -121,6 +122,11 @@ ATTRIBUTES = {
         "aspectratio",
         "src",
         "alignment",
+        "status",
+    },
+    "video-component": {
+        "id",
+        "src",
         "status",
     },
     "img": {
