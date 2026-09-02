@@ -4,7 +4,8 @@
  * See the LICENSE file for details.
  */
 
-import { debounce, set } from "lodash-es";
+import type { AxiosProgressEvent } from "axios";
+import { set } from "lodash-es";
 import { action, computed, makeObservable, observable, runInAction } from "mobx";
 import { computedFn } from "mobx-utils";
 import { v4 as uuidv4 } from "uuid";
@@ -87,15 +88,18 @@ export class EditorAssetStore implements IEditorAssetStore {
   );
 
   // actions
-  private debouncedUpdateProgress = debounce((blockId: string, progress: number) => {
-    runInAction(() => {
-      set(this.assetsUploadStatus, [blockId, "progress"], progress);
-    });
-  }, 16);
 
   uploadEditorAsset: IEditorAssetStore["uploadEditorAsset"] = async (args) => {
     const { blockId, data, file, projectId, workspaceSlug } = args;
     const tempId = uuidv4();
+    const handleUploadProgress = (progressEvent: AxiosProgressEvent) => {
+      const totalBytes = progressEvent.total ?? file.size;
+      const progressPercentage =
+        totalBytes > 0 ? Math.max(0, Math.min(100, Math.round((progressEvent.loaded / totalBytes) * 100))) : 0;
+      runInAction(() => {
+        set(this.assetsUploadStatus, [blockId, "progress"], progressPercentage);
+      });
+    };
 
     try {
       // update attachment upload status
@@ -114,17 +118,11 @@ export class EditorAssetStore implements IEditorAssetStore {
           projectId,
           data,
           file,
-          (progressEvent) => {
-            const progressPercentage = Math.round((progressEvent.progress ?? 0) * 100);
-            this.debouncedUpdateProgress(blockId, progressPercentage);
-          }
+          handleUploadProgress
         );
         return response;
       } else {
-        const response = await this.fileService.uploadWorkspaceAsset(workspaceSlug, data, file, (progressEvent) => {
-          const progressPercentage = Math.round((progressEvent.progress ?? 0) * 100);
-          this.debouncedUpdateProgress(blockId, progressPercentage);
-        });
+        const response = await this.fileService.uploadWorkspaceAsset(workspaceSlug, data, file, handleUploadProgress);
         return response;
       }
     } catch (error) {
