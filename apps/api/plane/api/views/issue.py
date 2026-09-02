@@ -73,6 +73,7 @@ from plane.db.models import (
     IssueComment,
     IssueLink,
     IssueRelation,
+    ModuleIssue,
     Label,
     Project,
     ProjectMember,
@@ -248,10 +249,22 @@ class WorkspaceIssueAPIEndpoint(BaseAPIView):
                 project__identifier=project_identifier,
                 sequence_id=issue_identifier,
             )
-            return Response(
-                IssueSerializer(issue, fields=self.fields, expand=self.expand).data,
-                status=status.HTTP_200_OK,
-            )
+            response_data = IssueSerializer(issue, fields=self.fields, expand=self.expand).data
+            if self.expand and "module" in self.expand:
+                module_issue = (
+                    ModuleIssue.objects.filter(issue_id=issue.id, deleted_at__isnull=True)
+                    .select_related("module")
+                    .first()
+                )
+                response_data["module"] = (
+                    {
+                        "id": str(module_issue.module_id),
+                        "name": module_issue.module.name,
+                    }
+                    if module_issue
+                    else None
+                )
+            return Response(response_data, status=status.HTTP_200_OK)
 
 
 class IssueListCreateAPIEndpoint(BaseAPIView):
@@ -590,9 +603,9 @@ class IssueDetailAPIEndpoint(BaseAPIView):
         if request.query_params.get("include_subscribers") == "true":
             data["subscribers"] = [
                 str(subscriber_id)
-                for subscriber_id in IssueSubscriber.objects.filter(
-                    issue=issue, deleted_at__isnull=True
-                ).values_list("subscriber_id", flat=True)
+                for subscriber_id in IssueSubscriber.objects.filter(issue=issue, deleted_at__isnull=True).values_list(
+                    "subscriber_id", flat=True
+                )
             ]
         return Response(data, status=status.HTTP_200_OK)
 
