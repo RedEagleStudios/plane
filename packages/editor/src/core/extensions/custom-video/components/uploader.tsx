@@ -20,6 +20,7 @@ import { uploadFirstFileAndInsertRemaining, useDropZone, useUploader } from "@/h
 import { ECustomVideoStatus } from "../types";
 import { getVideoComponentFileMap } from "../utils";
 import type { CustomVideoNodeViewProps } from "./node-view";
+import { VideoUploadStatus } from "./upload-status";
 
 type Props = CustomVideoNodeViewProps & {
   failedToLoadVideo: boolean;
@@ -165,7 +166,7 @@ export function CustomVideoUploader(props: Props) {
   return (
     <div
       className={cn(
-        "video-upload-component flex cursor-default items-center justify-start gap-2 rounded-lg border border-dashed bg-layer-3 px-2 py-3 text-tertiary transition-all duration-200 ease-in-out",
+        "video-upload-component relative flex cursor-default items-center justify-start gap-2 rounded-lg border border-dashed bg-layer-3 px-2 py-3 text-tertiary transition-all duration-200 ease-in-out",
         {
           "border-subtle": !(selected && editor.isEditable && !isErrorState),
           "cursor-pointer hover:bg-layer-3-hover hover:text-secondary": editor.isEditable && !hasDuplicationFailed,
@@ -200,6 +201,7 @@ export function CustomVideoUploader(props: Props) {
           <span className="text-11">Retry</span>
         </button>
       )}
+      {isUploading && videoEntityId && <VideoUploadStatus editor={editor} nodeId={videoEntityId} />}
       <input
         ref={fileInputRef}
         className="size-0 overflow-hidden"
