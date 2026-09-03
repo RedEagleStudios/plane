@@ -5,7 +5,7 @@
 import pytest
 from rest_framework import status
 
-from plane.db.models import Issue, IssueSubscriber, Project, ProjectMember, State
+from plane.db.models import Issue, IssueSubscriber, Module, ModuleIssue, Project, ProjectMember, State
 
 
 @pytest.fixture
@@ -114,4 +114,32 @@ class TestIssueSubscribers:
         assert response.data == {
             "id": issue.id,
             "subscribers": [str(create_user.id)],
+        }
+
+    @pytest.mark.django_db
+    def test_detail_can_include_module(self, api_key_client, workspace, project, issue, create_user):
+        module = Module.objects.create(
+            name="Dragon",
+            workspace=workspace,
+            project=project,
+            created_by=create_user,
+        )
+        ModuleIssue.objects.create(
+            module=module,
+            issue=issue,
+            workspace=workspace,
+            project=project,
+            created_by=create_user,
+        )
+        url = f"/api/v1/workspaces/{workspace.slug}/projects/{project.id}/issues/{issue.id}/"
+
+        response = api_key_client.get(url, {"fields": "id", "include_module": "true"})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == {
+            "id": issue.id,
+            "module": {
+                "id": str(module.id),
+                "name": "Dragon",
+            },
         }

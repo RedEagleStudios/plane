@@ -607,6 +607,20 @@ class IssueDetailAPIEndpoint(BaseAPIView):
                     "subscriber_id", flat=True
                 )
             ]
+        if request.query_params.get("include_module") == "true":
+            module_issue = (
+                ModuleIssue.objects.filter(issue=issue, deleted_at__isnull=True)
+                .select_related("module")
+                .first()
+            )
+            data["module"] = (
+                {
+                    "id": str(module_issue.module_id),
+                    "name": module_issue.module.name,
+                }
+                if module_issue
+                else None
+            )
         return Response(data, status=status.HTTP_200_OK)
 
     @work_item_docs(
