@@ -70,6 +70,7 @@ from plane.utils.grouper import (
 )
 from plane.utils.host import base_host
 from plane.utils.issue_filters import issue_filters
+from plane.utils.issue_hierarchy import is_hierarchy_filter_request, issue_ancestor_ids
 from plane.utils.order_queryset import order_issue_queryset
 from plane.utils.paginator import GroupedOffsetPaginator, SubGroupedOffsetPaginator
 from plane.utils.timezone_converter import user_timezone_converter
@@ -270,17 +271,40 @@ class IssueViewSet(BaseViewSet):
 
         project = Project.objects.get(pk=project_id, workspace__slug=slug)
         query_params = request.query_params.copy()
+        hierarchy_filtering = is_hierarchy_filter_request(query_params)
+        if hierarchy_filtering:
+            # Match descendants without the display-only top-level restriction.
+            # The returned page still contains roots so existing hierarchy layouts
+            # can progressively load only the matching branches.
+            query_params["sub_issue"] = "true"
 
         filters = issue_filters(query_params, "GET")
         order_by_param = request.GET.get("order_by", "-created_at")
 
-        issue_queryset = self.get_queryset()
+        accessible_issue_queryset = self.get_queryset()
+        if (
+            ProjectMember.objects.filter(
+                workspace__slug=slug,
+                project_id=project_id,
+                member=request.user,
+                role=ROLE.GUEST.value,
+                is_active=True,
+            ).exists()
+            and not project.guest_view_all_features
+        ):
+            accessible_issue_queryset = accessible_issue_queryset.filter(created_by=request.user)
 
-        # Apply rich filters
-        issue_queryset = self.filter_queryset(issue_queryset)
+        # Apply the complete expression to every accessible hierarchy level.
+        matching_issue_queryset = self.filter_queryset(accessible_issue_queryset)
+        matching_issue_queryset = matching_issue_queryset.filter(**filters, **extra_filters)
 
-        # Apply legacy filters
-        issue_queryset = issue_queryset.filter(**filters, **extra_filters)
+        if hierarchy_filtering:
+            issue_queryset = accessible_issue_queryset.filter(
+                parent__isnull=True,
+                id__in=issue_ancestor_ids(matching_issue_queryset, accessible_issue_queryset),
+            )
+        else:
+            issue_queryset = matching_issue_queryset
 
         # Keeping a copy of the queryset before applying annotations
         filtered_issue_queryset = copy.deepcopy(issue_queryset)
@@ -307,18 +331,6 @@ class IssueViewSet(BaseViewSet):
             entity_identifier=project_id,
             user_id=request.user.id,
         )
-        if (
-            ProjectMember.objects.filter(
-                workspace__slug=slug,
-                project_id=project_id,
-                member=request.user,
-                role=5,
-                is_active=True,
-            ).exists()
-            and not project.guest_view_all_features
-        ):
-            issue_queryset = issue_queryset.filter(created_by=request.user)
-            filtered_issue_queryset = filtered_issue_queryset.filter(created_by=request.user)
 
         if group_by:
             if sub_group_by:
@@ -744,21 +756,11 @@ class ProjectUserDisplayPropertyEndpoint(BaseAPIView):
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST])
     def patch(self, request, slug, project_id):
         try:
-            issue_property = ProjectUserProperty.objects.get(
-                user=request.user, 
-                project_id=project_id
-            )
+            issue_property = ProjectUserProperty.objects.get(user=request.user, project_id=project_id)
         except ProjectUserProperty.DoesNotExist:
-            issue_property = ProjectUserProperty.objects.create(
-                user=request.user, 
-                project_id=project_id
-            )
+            issue_property = ProjectUserProperty.objects.create(user=request.user, project_id=project_id)
 
-        serializer = ProjectUserPropertySerializer(
-            issue_property, 
-            data=request.data,
-            partial=True
-        )
+        serializer = ProjectUserPropertySerializer(issue_property, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)

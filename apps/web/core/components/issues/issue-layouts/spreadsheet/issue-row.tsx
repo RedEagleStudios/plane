@@ -5,7 +5,7 @@
  */
 
 import type { Dispatch, MouseEvent, MutableRefObject, SetStateAction } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
@@ -27,11 +27,17 @@ import { IssueIdentifier } from "@/components/issues/issue-detail/issue-identifi
 // hooks
 import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 import { useIssues } from "@/hooks/store/use-issues";
+import { useIssuesStore } from "@/hooks/use-issue-layout-store";
 import { useProject } from "@/hooks/store/use-project";
 import useIssuePeekOverviewRedirection from "@/hooks/use-issue-peek-overview-redirection";
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
 import { usePlatformOS } from "@/hooks/use-platform-os";
 // local components
+import {
+  getIssueHierarchyFilterQuery,
+  MAX_FILTERED_HIERARCHY_DEPTH,
+  shouldAutoExpandIssueHierarchy,
+} from "../hierarchy-filter";
 import type { TRenderQuickActions } from "../list/list-view-types";
 import { isIssueNew } from "../utils";
 import { IssueColumn } from "./issue-column";
@@ -195,6 +201,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
   // refs
   const cellRef = useRef(null);
   const menuActionRef = useRef<HTMLButtonElement | null>(null);
+  const autoFetchedFilterRef = useRef<string | undefined>(undefined);
   // router
   const { workspaceSlug, projectId } = useParams();
   // hooks
@@ -208,12 +215,62 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     handleRedirection(workspaceSlug?.toString(), issue, isMobile, nestingLevel);
 
   const { subIssues: subIssuesStore, issue } = useIssueDetail();
+  const { issuesFilter } = useIssuesStore();
 
   const issueDetail = issue.getIssueById(issueId);
 
   const subIssueIndentation = `${spacingLeft}px`;
+  const hierarchyFilterQuery = getIssueHierarchyFilterQuery(
+    issuesFilter.issueFilters?.richFilters,
+    issuesFilter.issueFilters?.displayFilters?.layout
+  );
+  const hierarchyFilters = hierarchyFilterQuery?.filters;
+  const hierarchyLayout = hierarchyFilterQuery?.layout;
+  const shouldAutoExpandHierarchy = shouldAutoExpandIssueHierarchy(
+    hierarchyFilterQuery,
+    issueDetail?.sub_issues_count ?? 0,
+    nestingLevel,
+    isEpic
+  );
 
   useOutsideClickDetector(menuActionRef, () => setIsMenuActive(false));
+
+  useEffect(() => {
+    if (!hierarchyFilters || !hierarchyLayout || isEpic) {
+      if (autoFetchedFilterRef.current) {
+        autoFetchedFilterRef.current = undefined;
+        setExpanded(false);
+      }
+      return;
+    }
+    if (!workspaceSlug || !issueDetail?.project_id || !shouldAutoExpandHierarchy) return;
+
+    const requestKey = `${hierarchyLayout}:${hierarchyFilters}`;
+    if (autoFetchedFilterRef.current === requestKey) return;
+
+    autoFetchedFilterRef.current = requestKey;
+    setExpanded(true);
+    void subIssuesStore
+      .fetchSubIssues(workspaceSlug.toString(), issueDetail.project_id, issueDetail.id, {
+        filters: hierarchyFilters,
+        layout: hierarchyLayout,
+        sub_issue: false,
+      })
+      .catch((error) => {
+        autoFetchedFilterRef.current = undefined;
+        console.error("Error fetching filtered sub-work items:", error);
+      });
+  }, [
+    hierarchyFilters,
+    hierarchyLayout,
+    isEpic,
+    issueDetail,
+    nestingLevel,
+    setExpanded,
+    subIssuesStore,
+    shouldAutoExpandHierarchy,
+    workspaceSlug,
+  ]);
 
   const customActionButton = (
     <button
@@ -232,12 +289,17 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
   const handleToggleExpand = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     e.preventDefault();
-    if (nestingLevel >= 3) {
+    if (nestingLevel >= MAX_FILTERED_HIERARCHY_DEPTH) {
       handleIssuePeekOverview(issueDetail);
     } else {
       setExpanded((prevState) => {
         if (!prevState && workspaceSlug && issueDetail && issueDetail.project_id)
-          subIssuesStore.fetchSubIssues(workspaceSlug.toString(), issueDetail.project_id, issueDetail.id);
+          subIssuesStore.fetchSubIssues(
+            workspaceSlug.toString(),
+            issueDetail.project_id,
+            issueDetail.id,
+            hierarchyFilterQuery
+          );
         return !prevState;
       });
     }

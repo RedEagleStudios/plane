@@ -3,11 +3,13 @@
 # See the LICENSE file for details.
 
 # Python imports
+from collections import defaultdict
+
 import json
 
 # Django imports
 from django.utils import timezone
-from django.db.models import OuterRef, Func, F, Q, Value, UUIDField, Subquery, Count, IntegerField
+from django.db.models import Count, F, IntegerField, OuterRef, Subquery, UUIDField, Value
 from django.utils.decorators import method_decorator
 from django.views.decorators.gzip import gzip_page
 from django.contrib.postgres.aggregates import ArrayAgg
@@ -21,23 +23,53 @@ from rest_framework import status
 # Module imports
 from .. import BaseAPIView
 from plane.app.serializers import IssueSerializer
-from plane.app.permissions import ProjectEntityPermission
-from plane.db.models import Issue, IssueLink, FileAsset, CycleIssue, IssueLabel, IssueAssignee, ModuleIssue
+from plane.app.permissions import ProjectEntityPermission, ROLE
+from plane.db.models import (
+    CycleIssue,
+    FileAsset,
+    Issue,
+    IssueAssignee,
+    IssueLabel,
+    IssueLink,
+    ModuleIssue,
+    ProjectMember,
+)
 from plane.bgtasks.issue_activities_task import issue_activity
-from plane.utils.timezone_converter import user_timezone_converter
-from collections import defaultdict
+from plane.utils.filters import ComplexFilterBackend, IssueFilterSet
 from plane.utils.host import base_host
+from plane.utils.issue_filters import issue_filters
+from plane.utils.issue_hierarchy import is_hierarchy_filter_request, issue_ancestor_ids
 from plane.utils.order_queryset import order_issue_queryset
+from plane.utils.timezone_converter import user_timezone_converter
 
 
 class SubIssuesEndpoint(BaseAPIView):
     permission_classes = [ProjectEntityPermission]
+    filter_backends = (ComplexFilterBackend,)
+    filterset_class = IssueFilterSet
 
     @method_decorator(gzip_page)
     def get(self, request, slug, project_id, issue_id):
+        accessible_issues = Issue.issue_objects.filter(project_id=project_id, workspace__slug=slug)
+        if ProjectMember.objects.filter(
+            workspace__slug=slug,
+            project_id=project_id,
+            member=request.user,
+            role=ROLE.GUEST.value,
+            is_active=True,
+            project__guest_view_all_features=False,
+        ).exists():
+            accessible_issues = accessible_issues.filter(created_by=request.user)
+
+        sub_issues = accessible_issues.filter(parent_id=issue_id)
+        query_params = request.query_params.copy()
+        if is_hierarchy_filter_request(query_params):
+            query_params["sub_issue"] = "true"
+            matching_issues = self.filter_queryset(accessible_issues).filter(**issue_filters(query_params, "GET"))
+            sub_issues = sub_issues.filter(id__in=issue_ancestor_ids(matching_issues, accessible_issues))
+
         sub_issues = (
-            Issue.issue_objects.filter(parent_id=issue_id, workspace__slug=slug)
-            .annotate(
+            sub_issues.annotate(
                 cycle_id=Subquery(
                     CycleIssue.objects.filter(issue=OuterRef("id"), deleted_at__isnull=True).values("cycle_id")[:1]
                 )

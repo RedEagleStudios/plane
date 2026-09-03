@@ -26,9 +26,15 @@ import { IssueIdentifier } from "@/components/issues/issue-detail/issue-identifi
 // hooks
 import { useAppTheme } from "@/hooks/store/use-app-theme";
 import { useIssueDetail } from "@/hooks/store/use-issue-detail";
+import { useIssuesStore } from "@/hooks/use-issue-layout-store";
 import { useProject } from "@/hooks/store/use-project";
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
 import { usePlatformOS } from "@/hooks/use-platform-os";
+import {
+  getIssueHierarchyFilterQuery,
+  MAX_FILTERED_HIERARCHY_DEPTH,
+  shouldAutoExpandIssueHierarchy,
+} from "../hierarchy-filter";
 import { calculateIdentifierWidth } from "../utils";
 import type { TRenderQuickActions } from "./list-view-types";
 
@@ -72,6 +78,7 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
   } = props;
   // ref
   const issueRef = useRef<HTMLDivElement | null>(null);
+  const autoFetchedFilterRef = useRef<string | undefined>(undefined);
   // router
   const { workspaceSlug: routerWorkspaceSlug, projectId: routerProjectId } = useParams();
   const workspaceSlug = routerWorkspaceSlug?.toString();
@@ -85,6 +92,7 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
     setPeekIssue,
     subIssues: subIssuesStore,
   } = useIssueDetail(isEpic ? EIssueServiceType.EPICS : EIssueServiceType.ISSUES);
+  const { issuesFilter } = useIssuesStore();
 
   const handleIssuePeekOverview = (issue: TIssue) =>
     workspaceSlug &&
@@ -107,6 +115,18 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
   const isDraggingAllowed = canDrag && canEditIssueProperties;
 
   const { isMobile } = usePlatformOS();
+  const hierarchyFilterQuery = getIssueHierarchyFilterQuery(
+    issuesFilter.issueFilters?.richFilters,
+    issuesFilter.issueFilters?.displayFilters?.layout
+  );
+  const hierarchyFilters = hierarchyFilterQuery?.filters;
+  const hierarchyLayout = hierarchyFilterQuery?.layout;
+  const shouldAutoExpandHierarchy = shouldAutoExpandIssueHierarchy(
+    hierarchyFilterQuery,
+    subIssuesCount,
+    nestingLevel,
+    isEpic
+  );
 
   useEffect(() => {
     const element = issueRef.current;
@@ -128,6 +148,44 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
     );
   }, [isDraggingAllowed, issueId, groupId, setIsCurrentBlockDragging]);
 
+  useEffect(() => {
+    if (!hierarchyFilters || !hierarchyLayout || isEpic) {
+      if (autoFetchedFilterRef.current) {
+        autoFetchedFilterRef.current = undefined;
+        setExpanded(false);
+      }
+      return;
+    }
+    if (!workspaceSlug || !issue?.project_id || !shouldAutoExpandHierarchy) return;
+
+    const requestKey = `${hierarchyLayout}:${hierarchyFilters}`;
+    if (autoFetchedFilterRef.current === requestKey) return;
+
+    autoFetchedFilterRef.current = requestKey;
+    setExpanded(true);
+    void subIssuesStore
+      .fetchSubIssues(workspaceSlug, issue.project_id, issue.id, {
+        filters: hierarchyFilters,
+        layout: hierarchyLayout,
+        sub_issue: false,
+      })
+      .catch((error) => {
+        autoFetchedFilterRef.current = undefined;
+        console.error("Error fetching filtered sub-work items:", error);
+      });
+  }, [
+    hierarchyFilters,
+    hierarchyLayout,
+    isEpic,
+    issue,
+    nestingLevel,
+    setExpanded,
+    subIssuesCount,
+    subIssuesStore,
+    shouldAutoExpandHierarchy,
+    workspaceSlug,
+  ]);
+
   if (!issue) return null;
 
   const projectIdentifier = getProjectIdentifierById(issue.project_id);
@@ -141,12 +199,12 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
   const handleToggleExpand = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     e.preventDefault();
-    if (nestingLevel >= 3) {
+    if (nestingLevel >= MAX_FILTERED_HIERARCHY_DEPTH) {
       handleIssuePeekOverview(issue);
     } else {
       setExpanded((prevState) => {
         if (!prevState && workspaceSlug && issue && issue.project_id)
-          subIssuesStore.fetchSubIssues(workspaceSlug.toString(), issue.project_id, issue.id);
+          subIssuesStore.fetchSubIssues(workspaceSlug, issue.project_id, issue.id, hierarchyFilterQuery);
         return !prevState;
       });
     }

@@ -10,6 +10,7 @@ import { computedFn } from "mobx-utils";
 // Plane Imports
 import type {
   TIssue,
+  TIssueParams,
   TIssueSubIssues,
   TIssueSubIssuesStateDistributionMap,
   TIssueSubIssuesIdMap,
@@ -25,7 +26,12 @@ import type { IWorkItemSubIssueFiltersStore } from "./sub_issues_filter.store";
 import { WorkItemSubIssueFiltersStore } from "./sub_issues_filter.store";
 
 export interface IIssueSubIssuesStoreActions {
-  fetchSubIssues: (workspaceSlug: string, projectId: string, parentIssueId: string) => Promise<TIssueSubIssues>;
+  fetchSubIssues: (
+    workspaceSlug: string,
+    projectId: string,
+    parentIssueId: string,
+    queries?: Partial<Record<TIssueParams, string | boolean>>
+  ) => Promise<TIssueSubIssues>;
   createSubIssues: (
     workspaceSlug: string,
     projectId: string,
@@ -125,9 +131,14 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
     });
   };
 
-  fetchSubIssues = async (workspaceSlug: string, projectId: string, parentIssueId: string) => {
+  fetchSubIssues = async (
+    workspaceSlug: string,
+    projectId: string,
+    parentIssueId: string,
+    queries?: Partial<Record<TIssueParams, string | boolean>>
+  ) => {
     this.loader = "init-loader";
-    const response = await this.issueService.subIssues(workspaceSlug, projectId, parentIssueId);
+    const response = await this.issueService.subIssues(workspaceSlug, projectId, parentIssueId, queries);
 
     const subIssuesStateDistribution = response?.state_distribution ?? {};
 
@@ -186,10 +197,10 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
         });
       });
 
-      const issueIds = subIssues.map((issue) => issue.id);
+      const createdIssueIds = subIssues.map((issue) => issue.id);
       update(this.subIssues, [parentIssueId], (issues) => {
-        if (!issues) return issueIds;
-        return concat(issues, issueIds);
+        if (!issues) return createdIssueIds;
+        return concat(issues, createdIssueIds);
       });
     });
 
