@@ -100,9 +100,9 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const { currentProjectDetails } = useProject();
   const { getCycleById } = useCycle();
   const estimate = useEstimate(currentProjectDetails?.estimate ?? undefined);
-  const {
-    issues: { getGroupIssueCount, getIssueLoader },
-  } = useIssuesStore();
+  const { issues } = useIssuesStore();
+  const { getGroupIssueCount, getIssueLoader } = issues;
+  const getGroupIssueMatchCount = "getGroupIssueMatchCount" in issues ? issues.getGroupIssueMatchCount : undefined;
   const { isMobile } = usePlatformOS();
   const [mobileExpansionOverrides, setMobileExpansionOverrides] = useState<Record<string, boolean>>({});
 
@@ -142,6 +142,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
       id: group.id,
       issueIds,
       totalCount: getGroupIssueCount(groupId, undefined, false) ?? issueIds.length,
+      matchCount: getGroupIssueMatchCount?.(groupId, undefined, false) ?? issueIds.length,
       isLoadingMore: getIssueLoader(groupId, undefined) === "pagination",
       isExpanded: isMobile
         ? (mobileExpansionOverrides[group.id] ?? (isPersistedExpanded && isMobileDefaultExpanded))
@@ -344,7 +345,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                             {group.icon}
                             <span className="font-semibold text-primary">{title}</span>
                             <span className="rounded-full bg-layer-3 px-2 py-0.5 text-11 text-secondary">
-                              {virtualGroup.totalCount}
+                              {virtualGroup.matchCount}
                             </span>
                             {estimateTotal !== null && (
                               <span className="rounded-full bg-layer-3 px-2 py-0.5 text-11 text-secondary">

@@ -107,9 +107,9 @@ export const ListGroup = observer(function ListGroup(props: Props) {
   const { t } = useTranslation();
   const projectState = useProjectState();
 
-  const {
-    issues: { getGroupIssueCount, getPaginationData, getIssueLoader },
-  } = useIssuesStore();
+  const { issues } = useIssuesStore();
+  const { getGroupIssueCount, getPaginationData, getIssueLoader } = issues;
+  const getGroupIssueMatchCount = "getGroupIssueMatchCount" in issues ? issues.getGroupIssueMatchCount : undefined;
 
   const [intersectionElement, setIntersectionElement] = useState<HTMLDivElement | null>(null);
 
@@ -118,6 +118,7 @@ export const ListGroup = observer(function ListGroup(props: Props) {
   const isWorkflowIssueCreationDisabled = getIsWorkflowWorkItemCreationDisabled(group.id);
 
   const groupIssueCount = getGroupIssueCount(group.id, undefined, false) ?? 0;
+  const groupIssueMatchCount = getGroupIssueMatchCount?.(group.id, undefined, false) ?? groupIssueCount;
   const nextPageResults = getPaginationData(group.id, undefined)?.nextPageResults;
   const isPaginating = !!getIssueLoader(group.id);
 
@@ -273,7 +274,7 @@ export const ListGroup = observer(function ListGroup(props: Props) {
           groupBy={group_by}
           icon={group.icon}
           title={group.name}
-          count={groupIssueCount}
+          count={groupIssueMatchCount}
           issuePayload={group.payload}
           canEditProperties={canEditProperties}
           disableIssueCreation={

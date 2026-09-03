@@ -73,7 +73,7 @@ def hierarchy_context(db, workspace, create_user):
         name="Nested context",
         project=project,
         workspace=workspace,
-        state=in_progress,
+        state=testing,
         parent=root,
         created_by=create_user,
     )
@@ -101,7 +101,7 @@ def hierarchy_context(db, workspace, create_user):
         created_by=create_user,
     )
 
-    for issue in (matching_leaf, matching_root):
+    for issue in (root, branch, matching_leaf, non_matching_sibling, matching_root):
         IssueLabel.objects.create(
             issue=issue,
             label=label,
@@ -129,14 +129,14 @@ def hierarchy_context(db, workspace, create_user):
         "layout": "grouped_spreadsheet",
         "sub_issue": "false",
     }
-    return project, root, branch, matching_leaf, non_matching_sibling, matching_root, query
+    return project, module, root, branch, matching_leaf, non_matching_sibling, matching_root, query
 
 
 @pytest.mark.contract
 @pytest.mark.django_db
 class TestIssueHierarchyFilters:
     def test_issue_list_keeps_roots_for_matching_descendants(self, session_client, workspace, hierarchy_context):
-        project, root, _branch, matching_leaf, _sibling, matching_root, query = hierarchy_context
+        project, module, root, _branch, matching_leaf, _sibling, matching_root, query = hierarchy_context
         url = f"/api/workspaces/{workspace.slug}/projects/{project.id}/issues/"
 
         response = session_client.get(url, query)
@@ -145,9 +145,20 @@ class TestIssueHierarchyFilters:
         returned_ids = {str(issue["id"]) for issue in response.data["results"]}
         assert returned_ids == {str(root.id), str(matching_root.id)}
         assert str(matching_leaf.id) not in returned_ids
+        assert response.data["total_count"] == 2
+        assert response.data["match_count"] == 3
+
+        grouped_response = session_client.get(
+            url,
+            {**query, "group_by": "issue_module__module_id"},
+        )
+        assert grouped_response.status_code == status.HTTP_200_OK, grouped_response.data
+        module_group = grouped_response.data["results"][str(module.id)]
+        assert module_group["total_results"] == 2
+        assert module_group["match_count"] == 3
 
     def test_sub_issue_expansion_keeps_only_matching_branches(self, session_client, workspace, hierarchy_context):
-        project, root, branch, matching_leaf, non_matching_sibling, _matching_root, query = hierarchy_context
+        project, _module, root, branch, matching_leaf, non_matching_sibling, _matching_root, query = hierarchy_context
 
         root_response = session_client.get(
             f"/api/workspaces/{workspace.slug}/projects/{project.id}/issues/{root.id}/sub-issues/",
@@ -168,7 +179,7 @@ class TestIssueHierarchyFilters:
     def test_non_hierarchy_layout_preserves_top_level_only_filtering(
         self, session_client, workspace, hierarchy_context
     ):
-        project, _root, _branch, _leaf, _sibling, matching_root, query = hierarchy_context
+        project, _module, _root, _branch, _leaf, _sibling, matching_root, query = hierarchy_context
         query["layout"] = "kanban"
         url = f"/api/workspaces/{workspace.slug}/projects/{project.id}/issues/"
 

@@ -61,6 +61,7 @@ export interface IBaseIssuesStore {
 
   groupedIssueIds: TGroupedIssues | TSubGroupedIssues | undefined; // object to store Issue Ids based on group or subgroup
   groupedIssueCount: TGroupedIssueCount; // map of groupId/subgroup and issue count of that particular group/subgroup
+  groupedIssueMatchCount: TGroupedIssueCount; // map of groupId/subgroup and actual filtered match counts
   issuePaginationData: TIssuePaginationData; // map of groupId/subgroup and pagination Data of that particular group/subgroup
 
   //actions
@@ -72,6 +73,11 @@ export interface IBaseIssuesStore {
   getPaginationData(groupId: string | undefined, subGroupId: string | undefined): TPaginationData | undefined;
   getIssueLoader(groupId?: string, subGroupId?: string): TLoader;
   getGroupIssueCount: (
+    groupId: string | undefined,
+    subGroupId: string | undefined,
+    isSubGroupCumulative: boolean
+  ) => number | undefined;
+  getGroupIssueMatchCount: (
     groupId: string | undefined,
     subGroupId: string | undefined,
     isSubGroupCumulative: boolean
@@ -181,6 +187,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
   issuePaginationData: TIssuePaginationData = {};
 
   groupedIssueCount: TGroupedIssueCount = {};
+  groupedIssueMatchCount: TGroupedIssueCount = {};
   //
   paginationOptions: IssuePaginationOptions | undefined = undefined;
 
@@ -209,6 +216,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
       groupedIssueIds: observable,
       issuePaginationData: observable,
       groupedIssueCount: observable,
+      groupedIssueMatchCount: observable,
 
       paginationOptions: observable,
       // computed
@@ -424,6 +432,27 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     }
   );
 
+  getGroupIssueMatchCount = computedFn(
+    (
+      groupId: string | undefined,
+      subGroupId: string | undefined,
+      isSubGroupCumulative: boolean
+    ): number | undefined => {
+      if (isSubGroupCumulative && subGroupId) {
+        const groupIssuesKeys = Object.keys(this.groupedIssueMatchCount);
+        let subGroupCumulativeCount = 0;
+
+        for (const groupKey of groupIssuesKeys) {
+          if (groupKey.includes(`_${subGroupId}`)) subGroupCumulativeCount += this.groupedIssueMatchCount[groupKey];
+        }
+
+        return subGroupCumulativeCount;
+      }
+
+      return get(this.groupedIssueMatchCount, [getGroupKey(groupId, subGroupId)]);
+    }
+  );
+
   /**
    * Gets the next page cursor based on number of issues currently available
    * @param groupId groupId for the cursor
@@ -462,7 +491,8 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     shouldClearPaginationOptions = true
   ) {
     // Process the Issue Response to get the following data from it
-    const { issueList, groupedIssues, groupedIssueCount } = this.processIssueResponse(issuesResponse);
+    const { issueList, groupedIssues, groupedIssueCount, groupedIssueMatchCount } =
+      this.processIssueResponse(issuesResponse);
 
     // The Issue list is added to the main Issue Map
     this.rootIssueStore.issues.addIssue(issueList);
@@ -470,7 +500,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     // Update all the GroupIds to this Store's groupedIssueIds and update Individual group issue counts
     runInAction(() => {
       this.clear(shouldClearPaginationOptions);
-      this.updateGroupedIssueIds(groupedIssues, groupedIssueCount);
+      this.updateGroupedIssueIds(groupedIssues, groupedIssueCount, groupedIssueMatchCount);
       this.loader[getGroupKey()] = undefined;
     });
 
@@ -493,14 +523,15 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
    */
   onfetchNexIssues(issuesResponse: TIssuesResponse, groupId?: string, subGroupId?: string) {
     // Process the Issue Response to get the following data from it
-    const { issueList, groupedIssues, groupedIssueCount } = this.processIssueResponse(issuesResponse);
+    const { issueList, groupedIssues, groupedIssueCount, groupedIssueMatchCount } =
+      this.processIssueResponse(issuesResponse);
 
     // The Issue list is added to the main Issue Map
     this.rootIssueStore.issues.addIssue(issueList);
 
     // Update all the GroupIds to this Store's groupedIssueIds and update Individual group issue counts
     runInAction(() => {
-      this.updateGroupedIssueIds(groupedIssues, groupedIssueCount, groupId, subGroupId);
+      this.updateGroupedIssueIds(groupedIssues, groupedIssueCount, groupedIssueMatchCount, groupId, subGroupId);
       this.loader[getGroupKey(groupId, subGroupId)] = undefined;
     });
 
@@ -1158,6 +1189,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
       this.groupedIssueIds = undefined;
       this.issuePaginationData = {};
       this.groupedIssueCount = {};
+      this.groupedIssueMatchCount = {};
       if (shouldClearPaginationOptions) {
         this.paginationOptions = undefined;
       }
@@ -1264,6 +1296,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     issueList: TIssue[];
     groupedIssues: TIssues;
     groupedIssueCount: TGroupedIssueCount;
+    groupedIssueMatchCount: TGroupedIssueCount;
   } {
     const issueResult = issueResponse?.results;
 
@@ -1273,6 +1306,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
         issueList: [],
         groupedIssues: {},
         groupedIssueCount: {},
+        groupedIssueMatchCount: {},
       };
 
     //if is an array then it's an ungrouped response. return values with groupId as ALL_ISSUES
@@ -1285,15 +1319,20 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
         groupedIssueCount: {
           [ALL_ISSUES]: issueResponse.total_count,
         },
+        groupedIssueMatchCount: {
+          [ALL_ISSUES]: issueResponse.match_count ?? issueResponse.total_count,
+        },
       };
     }
 
     const issueList: TIssue[] = [];
     const groupedIssues: TGroupedIssues | TSubGroupedIssues = {};
     const groupedIssueCount: TGroupedIssueCount = {};
+    const groupedIssueMatchCount: TGroupedIssueCount = {};
 
     // update total issue count to ALL_ISSUES
     set(groupedIssueCount, [ALL_ISSUES], issueResponse.total_count);
+    set(groupedIssueMatchCount, [ALL_ISSUES], issueResponse.match_count ?? issueResponse.total_count);
 
     // loop through all the groupIds from issue Result
     for (const groupId in issueResult) {
@@ -1305,6 +1344,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
       // set grouped Issue count of the current groupId
       set(groupedIssueCount, [groupId], groupIssuesObject.total_results);
+      set(groupedIssueMatchCount, [groupId], groupIssuesObject.match_count ?? groupIssuesObject.total_results);
 
       // if groupIssueResult, the it is not subGrouped
       if (Array.isArray(groupIssueResult)) {
@@ -1329,6 +1369,11 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
         // set sub grouped Issue count of the current groupId
         set(groupedIssueCount, [getGroupKey(groupId, subGroupId)], subGroupIssuesObject.total_results);
+        set(
+          groupedIssueMatchCount,
+          [getGroupKey(groupId, subGroupId)],
+          subGroupIssuesObject.match_count ?? subGroupIssuesObject.total_results
+        );
 
         if (Array.isArray(subGroupIssueResult)) {
           // add the result to issueList
@@ -1345,7 +1390,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
       }
     }
 
-    return { issueList, groupedIssues, groupedIssueCount };
+    return { issueList, groupedIssues, groupedIssueCount, groupedIssueMatchCount };
   }
 
   /**
@@ -1359,6 +1404,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
   updateGroupedIssueIds(
     groupedIssues: TIssues,
     groupedIssueCount: TGroupedIssueCount,
+    groupedIssueMatchCount: TGroupedIssueCount,
     groupId?: string,
     subGroupId?: string
   ) {
@@ -1367,6 +1413,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     if (groupId && groupedIssues[ALL_ISSUES] && Array.isArray(groupedIssues[ALL_ISSUES])) {
       const issueGroup = groupedIssues[ALL_ISSUES];
       const issueGroupCount = groupedIssueCount[ALL_ISSUES];
+      const issueGroupMatchCount = groupedIssueMatchCount[ALL_ISSUES];
       const issuesPath = [groupId];
       // issuesPath is the path for the issue List in the Grouped Issue List
       // issuePath is either [groupId] for grouped pagination or [groupId, subGroupId] for subGrouped pagination
@@ -1374,6 +1421,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
       // update the issue Count of the particular group/subGroup
       set(this.groupedIssueCount, [getGroupKey(groupId, subGroupId)], issueGroupCount);
+      set(this.groupedIssueMatchCount, [getGroupKey(groupId, subGroupId)], issueGroupMatchCount);
 
       // update the issue list in the issuePath
       this.updateIssueGroup(issueGroup, issuesPath);
@@ -1383,15 +1431,18 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     // if not in the above condition the it's a complete grouped pagination not individual group/subgroup pagination
     // update total issue count as ALL_ISSUES count in `groupedIssueCount` object
     set(this.groupedIssueCount, [ALL_ISSUES], groupedIssueCount[ALL_ISSUES]);
+    set(this.groupedIssueMatchCount, [ALL_ISSUES], groupedIssueMatchCount[ALL_ISSUES]);
 
     // loop through the groups of groupedIssues.
     // oxlint-disable-next-line no-shadow
     for (const groupId in groupedIssues) {
       const issueGroup = groupedIssues[groupId];
       const issueGroupCount = groupedIssueCount[groupId];
+      const issueGroupMatchCount = groupedIssueMatchCount[groupId];
 
       // update the groupId's issue count
       set(this.groupedIssueCount, [groupId], issueGroupCount);
+      set(this.groupedIssueMatchCount, [groupId], issueGroupMatchCount);
 
       // This updates the group issue list in the store, if the issueGroup is a string
       const storeUpdated = this.updateIssueGroup(issueGroup, [groupId]);
@@ -1403,9 +1454,11 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
       for (const subGroupId in issueGroup) {
         const issueSubGroup = (issueGroup as TGroupedIssues)[subGroupId];
         const issueSubGroupCount = groupedIssueCount[getGroupKey(groupId, subGroupId)];
+        const issueSubGroupMatchCount = groupedIssueMatchCount[getGroupKey(groupId, subGroupId)];
 
         // update the subGroupId's issue count
         set(this.groupedIssueCount, [getGroupKey(groupId, subGroupId)], issueSubGroupCount);
+        set(this.groupedIssueMatchCount, [getGroupKey(groupId, subGroupId)], issueSubGroupMatchCount);
         // This updates the subgroup issue list in the store
         this.updateIssueGroup(issueSubGroup, [groupId, subGroupId]);
       }

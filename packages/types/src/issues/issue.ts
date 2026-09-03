@@ -118,9 +118,11 @@ export type TIssueResponseResults =
               [key: string]: {
                 results: TBaseIssue[];
                 total_results: number;
+                match_count?: number;
               };
             };
         total_results: number;
+        match_count?: number;
       };
     };
 
@@ -131,6 +133,7 @@ export type TIssuesResponse = {
   next_page_results: boolean;
   prev_page_results: boolean;
   total_count: number;
+  match_count?: number;
   count: number;
   total_pages: number;
   extra_stats: null;

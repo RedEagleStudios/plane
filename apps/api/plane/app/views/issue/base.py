@@ -262,6 +262,41 @@ class IssueViewSet(BaseViewSet):
 
         return issues
 
+    def add_hierarchy_match_counts(self, response, matching_queryset, group_by, sub_group_by):
+        response.data["match_count"] = matching_queryset.values("id").distinct().count()
+        if not group_by or not isinstance(response.data.get("results"), dict):
+            return response
+
+        grouped_matches = issue_queryset_grouper(
+            queryset=self.apply_annotations(matching_queryset),
+            group_by=group_by,
+            sub_group_by=sub_group_by,
+        )
+        group_counts = {
+            str(row[group_by]): row["match_count"]
+            for row in grouped_matches.values(group_by).annotate(match_count=Count("id", distinct=True)).order_by()
+        }
+        for group_id, group_data in response.data["results"].items():
+            group_data["match_count"] = group_counts.get(group_id, 0)
+
+        if not sub_group_by:
+            return response
+
+        sub_group_counts = {
+            (str(row[group_by]), str(row[sub_group_by])): row["match_count"]
+            for row in grouped_matches.values(group_by, sub_group_by)
+            .annotate(match_count=Count("id", distinct=True))
+            .order_by()
+        }
+        for group_id, group_data in response.data["results"].items():
+            sub_groups = group_data.get("results")
+            if not isinstance(sub_groups, dict):
+                continue
+            for sub_group_id, sub_group_data in sub_groups.items():
+                sub_group_data["match_count"] = sub_group_counts.get((group_id, sub_group_id), 0)
+
+        return response
+
     @method_decorator(gzip_page)
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST])
     def list(self, request, slug, project_id):
@@ -342,7 +377,7 @@ class IssueViewSet(BaseViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 else:
-                    return self.paginate(
+                    response = self.paginate(
                         request=request,
                         order_by=order_by_param,
                         queryset=issue_queryset,
@@ -376,9 +411,14 @@ class IssueViewSet(BaseViewSet):
                             is_draft=False,
                         ),
                     )
+                    return (
+                        self.add_hierarchy_match_counts(response, matching_issue_queryset, group_by, sub_group_by)
+                        if hierarchy_filtering
+                        else response
+                    )
             else:
                 # Group paginate
-                return self.paginate(
+                response = self.paginate(
                     request=request,
                     order_by=order_by_param,
                     queryset=issue_queryset,
@@ -404,13 +444,23 @@ class IssueViewSet(BaseViewSet):
                         is_draft=False,
                     ),
                 )
+                return (
+                    self.add_hierarchy_match_counts(response, matching_issue_queryset, group_by, sub_group_by)
+                    if hierarchy_filtering
+                    else response
+                )
         else:
-            return self.paginate(
+            response = self.paginate(
                 order_by=order_by_param,
                 request=request,
                 queryset=issue_queryset,
                 total_count_queryset=filtered_issue_queryset,
                 on_results=lambda issues: issue_on_results(group_by=group_by, issues=issues, sub_group_by=sub_group_by),
+            )
+            return (
+                self.add_hierarchy_match_counts(response, matching_issue_queryset, group_by, sub_group_by)
+                if hierarchy_filtering
+                else response
             )
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
