@@ -69,8 +69,8 @@ describe("Grouped Table summaries", () => {
       ])
     ).toEqual([
       { type: "group", key: "group:current", groupId: "current" },
-      { type: "issue", key: "issue:one", groupId: "current", issueId: "one" },
-      { type: "issue", key: "issue:two", groupId: "current", issueId: "two" },
+      { type: "issue", key: "issue:current:one", groupId: "current", issueId: "one" },
+      { type: "issue", key: "issue:current:two", groupId: "current", issueId: "two" },
       {
         type: "load-more",
         key: "load-more:current:2",
@@ -80,6 +80,21 @@ describe("Grouped Table summaries", () => {
       },
       { type: "group", key: "group:history", groupId: "history" },
     ]);
+  });
+
+  it("keeps virtual row keys unique when a work item belongs to multiple groups", () => {
+    const rows = buildGroupedTableVirtualRows([
+      { id: "alpha", issueIds: ["shared"], totalCount: 1, isExpanded: true, isLoadingMore: false },
+      { id: "beta", issueIds: ["shared"], totalCount: 1, isExpanded: true, isLoadingMore: false },
+    ]);
+
+    expect(rows.map((row) => row.key)).toEqual([
+      "group:alpha",
+      "issue:alpha:shared",
+      "group:beta",
+      "issue:beta:shared",
+    ]);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(rows.length);
   });
 
   it("marks the pagination sentinel as loading only while its group is fetching", () => {

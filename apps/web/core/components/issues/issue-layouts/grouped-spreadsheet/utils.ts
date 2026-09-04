@@ -44,7 +44,7 @@ export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[])
     if (!group.isExpanded) continue;
 
     for (const issueId of group.issueIds) {
-      rows.push({ type: "issue", key: `issue:${issueId}`, groupId: group.id, issueId });
+      rows.push({ type: "issue", key: `issue:${group.id}:${issueId}`, groupId: group.id, issueId });
     }
 
     if (group.issueIds.length < group.totalCount) {
