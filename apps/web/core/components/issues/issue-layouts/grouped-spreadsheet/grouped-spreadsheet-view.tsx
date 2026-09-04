@@ -42,6 +42,7 @@ import {
   groupedTableGroupTitle,
   sumNumericEstimateValues,
   shouldShowGroupedTableGroup,
+  updateExpandedIssueRowKeys,
 } from "./utils";
 
 const GROUPED_TABLE_ROW_HEIGHT = 44;
@@ -105,6 +106,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const getGroupIssueMatchCount = "getGroupIssueMatchCount" in issues ? issues.getGroupIssueMatchCount : undefined;
   const { isMobile } = usePlatformOS();
   const [mobileExpansionOverrides, setMobileExpansionOverrides] = useState<Record<string, boolean>>({});
+  const [expandedIssueRowKeys, setExpandedIssueRowKeys] = useState<ReadonlySet<string>>(() => new Set());
 
   const groups = useMemo(
     () =>
@@ -164,6 +166,10 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
     }
     setMobileExpansionOverrides((current) => ({ ...current, [groupId]: !isExpanded }));
   };
+
+  const handleIssueExpansionChange = useCallback((expansionKey: string, isExpanded: boolean) => {
+    setExpandedIssueRowKeys((currentKeys) => updateExpandedIssueRowKeys(currentKeys, expansionKey, isExpanded));
+  }, []);
 
   const isEstimateEnabled = currentProjectDetails?.estimate != null;
   const spreadsheetColumnsList = SPREADSHEET_PROPERTY_LIST.filter((property) => {
@@ -280,6 +286,9 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                           spreadsheetColumnsList={spreadsheetColumnsList}
                           selectionHelpers={selectionHelpers}
                           forceRender
+                          expansionKey={row.key}
+                          expandedIssueKeys={expandedIssueRowKeys}
+                          onIssueExpansionChange={handleIssueExpansionChange}
                         />
                       );
                     }

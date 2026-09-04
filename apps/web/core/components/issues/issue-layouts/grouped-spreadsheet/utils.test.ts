@@ -11,6 +11,7 @@ import {
   groupedTableGroupTitle,
   sumNumericEstimateValues,
   shouldShowGroupedTableGroup,
+  updateExpandedIssueRowKeys,
 } from "./utils";
 
 describe("Grouped Table summaries", () => {
@@ -95,6 +96,16 @@ describe("Grouped Table summaries", () => {
       "issue:beta:shared",
     ]);
     expect(new Set(rows.map((row) => row.key)).size).toBe(rows.length);
+  });
+
+  it("preserves expanded work items outside the virtualized row lifecycle", () => {
+    const parentKey = "issue:alpha:parent";
+    const childKey = `${parentKey}:child`;
+    let expandedKeys = updateExpandedIssueRowKeys(new Set(), parentKey, true);
+    expandedKeys = updateExpandedIssueRowKeys(expandedKeys, childKey, true);
+
+    expect(expandedKeys).toEqual(new Set([parentKey, childKey]));
+    expect(updateExpandedIssueRowKeys(expandedKeys, parentKey, false)).toEqual(new Set());
   });
 
   it("marks the pagination sentinel as loading only while its group is fetching", () => {

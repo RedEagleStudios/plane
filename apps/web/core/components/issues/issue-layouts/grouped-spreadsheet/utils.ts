@@ -61,6 +61,23 @@ export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[])
   return rows;
 }
 
+export function updateExpandedIssueRowKeys(
+  currentKeys: ReadonlySet<string>,
+  expansionKey: string,
+  isExpanded: boolean
+): ReadonlySet<string> {
+  const nextKeys = new Set(currentKeys);
+  if (isExpanded) {
+    nextKeys.add(expansionKey);
+    return nextKeys;
+  }
+
+  for (const key of nextKeys) {
+    if (key === expansionKey || key.startsWith(`${expansionKey}:`)) nextKeys.delete(key);
+  }
+  return nextKeys;
+}
+
 export function sumNumericEstimateValues(values: (string | number | null | undefined)[]): number | null {
   let total = 0;
   let numericValueCount = 0;

@@ -5,7 +5,7 @@
  */
 
 import type { Dispatch, MouseEvent, MutableRefObject, SetStateAction } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
@@ -58,6 +58,9 @@ interface Props {
   selectionHelpers: TSelectionHelper;
   shouldRenderByDefault?: boolean;
   forceRender?: boolean;
+  expansionKey?: string;
+  expandedIssueKeys?: ReadonlySet<string>;
+  onIssueExpansionChange?: (expansionKey: string, isExpanded: boolean) => void;
   isEpic?: boolean;
 }
 
@@ -78,10 +81,26 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
     selectionHelpers,
     shouldRenderByDefault,
     forceRender = false,
+    expansionKey,
+    expandedIssueKeys,
+    onIssueExpansionChange,
     isEpic = false,
   } = props;
   // states
-  const [isExpanded, setExpanded] = useState<boolean>(false);
+  const [isLocallyExpanded, setIsLocallyExpanded] = useState(false);
+  const resolvedExpansionKey = expansionKey ?? issueId;
+  const isExpanded = expandedIssueKeys?.has(resolvedExpansionKey) ?? isLocallyExpanded;
+  const setExpanded = useCallback<Dispatch<SetStateAction<boolean>>>(
+    (value) => {
+      const nextIsExpanded = typeof value === "function" ? value(isExpanded) : value;
+      if (expandedIssueKeys && onIssueExpansionChange) {
+        onIssueExpansionChange(resolvedExpansionKey, nextIsExpanded);
+        return;
+      }
+      setIsLocallyExpanded(nextIsExpanded);
+    },
+    [expandedIssueKeys, isExpanded, onIssueExpansionChange, resolvedExpansionKey]
+  );
   // store hooks
   const { subIssues: subIssuesStore } = useIssueDetail(isEpic ? EIssueServiceType.EPICS : EIssueServiceType.ISSUES);
   const { issueMap } = useIssues();
@@ -154,6 +173,9 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
             spreadsheetColumnsList={spreadsheetColumnsList}
             selectionHelpers={selectionHelpers}
             shouldRenderByDefault={isExpanded}
+            expansionKey={`${resolvedExpansionKey}:${subIssueId}`}
+            expandedIssueKeys={expandedIssueKeys}
+            onIssueExpansionChange={onIssueExpansionChange}
           />
         ))}
     </>
