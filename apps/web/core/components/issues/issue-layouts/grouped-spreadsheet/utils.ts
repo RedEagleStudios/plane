@@ -19,7 +19,15 @@ export interface GroupedTableVirtualGroup {
 export type GroupedTableVirtualRow =
   | { type: "group"; key: string; groupId: string }
   | { type: "issue"; key: string; groupId: string; issueId: string }
-  | { type: "load-more"; key: string; groupId: string; loadedCount: number; isLoading: boolean };
+  | {
+      type: "load-more";
+      key: string;
+      pageKey: string;
+      groupId: string;
+      loadedCount: number;
+      unloadedCount: number;
+      isLoading: boolean;
+    };
 
 type GroupVisibilityOptions = {
   cycleStatus?: string | null;
@@ -50,15 +58,21 @@ export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[])
     if (group.issueIds.length < group.totalCount) {
       rows.push({
         type: "load-more",
-        key: `load-more:${group.id}:${group.issueIds.length}`,
+        key: `load-more:${group.id}`,
+        pageKey: `load-more:${group.id}:${group.issueIds.length}`,
         groupId: group.id,
         loadedCount: group.issueIds.length,
+        unloadedCount: group.totalCount - group.issueIds.length,
         isLoading: group.isLoadingMore,
       });
     }
   }
 
   return rows;
+}
+
+export function getGroupedTableVirtualRowHeight(row: GroupedTableVirtualRow, rowHeight: number): number {
+  return row.type === "load-more" ? row.unloadedCount * rowHeight : rowHeight;
 }
 
 export function updateExpandedIssueRowKeys(

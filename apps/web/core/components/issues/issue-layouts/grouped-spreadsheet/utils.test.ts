@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGroupedTableVirtualRows,
+  getGroupedTableVirtualRowHeight,
   formatEstimateTotal,
   groupedTableGroupTitle,
   sumNumericEstimateValues,
@@ -74,9 +75,11 @@ describe("Grouped Table summaries", () => {
       { type: "issue", key: "issue:current:two", groupId: "current", issueId: "two" },
       {
         type: "load-more",
-        key: "load-more:current:2",
+        key: "load-more:current",
+        pageKey: "load-more:current:2",
         groupId: "current",
         loadedCount: 2,
+        unloadedCount: 1,
         isLoading: false,
       },
       { type: "group", key: "group:history", groupId: "history" },
@@ -108,6 +111,29 @@ describe("Grouped Table summaries", () => {
     expect(updateExpandedIssueRowKeys(expandedKeys, parentKey, false)).toEqual(new Set());
   });
 
+  it("reserves stable scroll space while a large group paginates", () => {
+    const nextGroupKey = "group:next";
+    const getNextGroupOffset = (loadedIssueCount: number) => {
+      const rows = buildGroupedTableVirtualRows([
+        {
+          id: "large",
+          issueIds: Array.from({ length: loadedIssueCount }, (_, index) => `issue-${index}`),
+          totalCount: 250,
+          isExpanded: true,
+          isLoadingMore: false,
+        },
+        { id: "next", issueIds: [], totalCount: 0, isExpanded: false, isLoadingMore: false },
+      ]);
+      const nextGroupIndex = rows.findIndex((row) => row.key === nextGroupKey);
+      return rows
+        .slice(0, nextGroupIndex)
+        .reduce((offset, row) => offset + getGroupedTableVirtualRowHeight(row, 44), 0);
+    };
+
+    expect(getNextGroupOffset(100)).toBe(251 * 44);
+    expect(getNextGroupOffset(200)).toBe(251 * 44);
+  });
+
   it("marks the pagination sentinel as loading only while its group is fetching", () => {
     expect(
       buildGroupedTableVirtualRows([
@@ -115,9 +141,11 @@ describe("Grouped Table summaries", () => {
       ])
     ).toContainEqual({
       type: "load-more",
-      key: "load-more:current:1",
+      key: "load-more:current",
+      pageKey: "load-more:current:1",
       groupId: "current",
       loadedCount: 1,
+      unloadedCount: 1,
       isLoading: true,
     });
   });

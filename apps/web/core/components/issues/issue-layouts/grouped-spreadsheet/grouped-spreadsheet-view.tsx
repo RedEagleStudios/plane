@@ -38,6 +38,7 @@ import { SpreadsheetIssueRow } from "../spreadsheet/issue-row";
 import { SpreadsheetHeader } from "../spreadsheet/spreadsheet-header";
 import {
   buildGroupedTableVirtualRows,
+  getGroupedTableVirtualRowHeight,
   formatEstimateTotal,
   groupedTableGroupTitle,
   sumNumericEstimateValues,
@@ -46,7 +47,7 @@ import {
 } from "./utils";
 
 const GROUPED_TABLE_ROW_HEIGHT = 44;
-const GROUPED_TABLE_OVERSCAN = 4;
+const GROUPED_TABLE_OVERSCAN = 20;
 const GROUP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -185,7 +186,10 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const rowVirtualizer = useVirtualizer({
     count: virtualRows.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => GROUPED_TABLE_ROW_HEIGHT,
+    estimateSize: (index) => {
+      const row = virtualRows[index];
+      return row ? getGroupedTableVirtualRowHeight(row, GROUPED_TABLE_ROW_HEIGHT) : GROUPED_TABLE_ROW_HEIGHT;
+    },
     overscan: GROUPED_TABLE_OVERSCAN,
     getItemKey: (index) => virtualRows[index]?.key ?? index,
   });
@@ -214,7 +218,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
     for (const virtualItem of virtualItems) {
       const row = virtualRows[virtualItem.index];
       if (row?.type !== "load-more") continue;
-      requestMoreIssues(row.groupId, row.key, row.isLoading);
+      requestMoreIssues(row.groupId, row.pageKey, row.isLoading);
     }
   }, [requestMoreIssues, virtualItems, virtualRows]);
 
@@ -248,6 +252,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
             <div
               ref={containerRef}
               className="vertical-scrollbar horizontal-scrollbar scrollbar-lg h-full w-full touch-pan-x touch-pan-y overflow-auto"
+              style={{ overflowAnchor: "none" }}
             >
               <table className="w-full min-w-max bg-surface-1" onKeyDown={handleKeyboardNavigation}>
                 <SpreadsheetHeader
@@ -298,22 +303,25 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                         <tr key={row.key} aria-live="polite">
                           <td
                             colSpan={columnCount}
-                            className="h-11 border-b border-subtle px-page-x text-12 text-tertiary"
+                            className="border-b border-subtle align-top text-12 text-tertiary"
+                            style={{ height: `${getGroupedTableVirtualRowHeight(row, GROUPED_TABLE_ROW_HEIGHT)}px` }}
                           >
-                            {row.isLoading ? (
-                              "Loading more work items…"
-                            ) : (
-                              <button
-                                type="button"
-                                className="font-medium text-accent-primary hover:text-accent-secondary hover:underline"
-                                onClick={() => {
-                                  requestedPageKeys.current.delete(row.key);
-                                  requestMoreIssues(row.groupId, row.key, false);
-                                }}
-                              >
-                                Load more work items
-                              </button>
-                            )}
+                            <div className="sticky top-11 flex h-11 items-center bg-surface-1 px-page-x">
+                              {row.isLoading ? (
+                                "Loading more work items…"
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="font-medium text-accent-primary hover:text-accent-secondary hover:underline"
+                                  onClick={() => {
+                                    requestedPageKeys.current.delete(row.pageKey);
+                                    requestMoreIssues(row.groupId, row.pageKey, false);
+                                  }}
+                                >
+                                  Load more work items
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
