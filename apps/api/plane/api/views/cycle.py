@@ -9,6 +9,7 @@ import json
 from django.core import serializers
 from django.utils import timezone
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 from django.db.models import (
     Count,
     F,
@@ -47,6 +48,13 @@ from plane.db.models import (
     UserFavorite,
 )
 from plane.utils.cycle_transfer_issues import transfer_cycle_issues
+from plane.utils.cycle_backfill import (
+    BACKFILL_LOCKED_MESSAGE,
+    can_edit_cycle,
+    cycle_editable_expression,
+    prepare_cycle_membership_change,
+)
+from plane.utils.cycle_snapshot import capture_cycle_snapshot, prepare_cycle_snapshot, refresh_cycle_snapshot
 from plane.utils.order_queryset import CYCLE_ORDER_BY_ALLOWLIST, ISSUE_ORDER_BY_ALLOWLIST, sanitize_order_by
 from plane.utils.host import base_host
 from .base import BaseAPIView
@@ -91,6 +99,7 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
     def get_queryset(self):
         return (
             Cycle.objects.filter(workspace__slug=self.kwargs.get("slug"))
+            .annotate(is_editable=cycle_editable_expression())
             .filter(project_id=self.kwargs.get("project_id"))
             .filter(
                 project__project_projectmember__member=self.request.user,
@@ -217,13 +226,15 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
-                    cycles,
-                    many=True,
-                    fields=self.fields,
-                    expand=self.expand,
-                    context={"project": project},
-                ).data,
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
             )
 
         # Completed Cycles
@@ -232,13 +243,15 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
-                    cycles,
-                    many=True,
-                    fields=self.fields,
-                    expand=self.expand,
-                    context={"project": project},
-                ).data,
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
             )
 
         # Draft Cycles
@@ -247,13 +260,15 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
-                    cycles,
-                    many=True,
-                    fields=self.fields,
-                    expand=self.expand,
-                    context={"project": project},
-                ).data,
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
             )
 
         # Incomplete Cycles
@@ -262,24 +277,28 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
+            )
+        return self.paginate(
+            request=request,
+            queryset=(queryset),
+            on_results=lambda cycles: (
+                CycleSerializer(
                     cycles,
                     many=True,
                     fields=self.fields,
                     expand=self.expand,
                     context={"project": project},
-                ).data,
-            )
-        return self.paginate(
-            request=request,
-            queryset=(queryset),
-            on_results=lambda cycles: CycleSerializer(
-                cycles,
-                many=True,
-                fields=self.fields,
-                expand=self.expand,
-                context={"project": project},
-            ).data,
+                ).data
+            ),
         )
 
     @cycle_docs(
@@ -319,14 +338,20 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
                         workspace__slug=slug,
                         external_source=request.data.get("external_source"),
                         external_id=request.data.get("external_id"),
-                    ).exists()
+                    )
+                    .annotate(is_editable=cycle_editable_expression())
+                    .exists()
                 ):
-                    cycle = Cycle.objects.filter(
-                        workspace__slug=slug,
-                        project_id=project_id,
-                        external_source=request.data.get("external_source"),
-                        external_id=request.data.get("external_id"),
-                    ).first()
+                    cycle = (
+                        Cycle.objects.filter(
+                            workspace__slug=slug,
+                            project_id=project_id,
+                            external_source=request.data.get("external_source"),
+                            external_id=request.data.get("external_id"),
+                        )
+                        .annotate(is_editable=cycle_editable_expression())
+                        .first()
+                    )
                     return Response(
                         {
                             "error": "Cycle with the same external id and external source already exists",
@@ -387,6 +412,7 @@ class CycleListLiteAPIEndpoint(BaseAPIView):
         """
         cycles = (
             Cycle.objects.filter(workspace__slug=slug, project_id=project_id)
+            .annotate(is_editable=cycle_editable_expression())
             .filter(archived_at__isnull=True)
             .select_related("project", "workspace", "owned_by")
             .order_by(
@@ -419,6 +445,7 @@ class CycleDetailAPIEndpoint(BaseAPIView):
     def get_queryset(self):
         return (
             Cycle.objects.filter(workspace__slug=self.kwargs.get("slug"))
+            .annotate(is_editable=cycle_editable_expression())
             .filter(project_id=self.kwargs.get("project_id"))
             .filter(
                 project__project_projectmember__member=self.request.user,
@@ -527,7 +554,7 @@ class CycleDetailAPIEndpoint(BaseAPIView):
     @cycle_docs(
         operation_id="update_cycle",
         summary="Update cycle",
-        description="Modify an existing cycle's properties like name, description, or date range. Completed cycles can only have their sort order changed.",  # noqa: E501
+        description="Modify cycle properties. The two most recently completed cycles allow backfill; older cycles only allow sort-order changes.",  # noqa: E501
         request=OpenApiRequest(
             request=CycleUpdateSerializer,
             examples=[CYCLE_UPDATE_EXAMPLE],
@@ -540,13 +567,14 @@ class CycleDetailAPIEndpoint(BaseAPIView):
             ),
         },
     )
+    @transaction.atomic
     def patch(self, request, slug, project_id, pk):
         """Update cycle
 
         Modify an existing cycle's properties like name, description, or date range.
-        Completed cycles can only have their sort order changed.
+        The two most recently completed cycles permit backfill; older cycles only permit reordering.
         """
-        cycle = Cycle.objects.get(workspace__slug=slug, project_id=project_id, pk=pk)
+        cycle = Cycle.objects.select_for_update().get(workspace__slug=slug, project_id=project_id, pk=pk)
 
         current_instance = json.dumps(CycleSerializer(cycle).data, cls=DjangoJSONEncoder)
 
@@ -558,18 +586,11 @@ class CycleDetailAPIEndpoint(BaseAPIView):
 
         request_data = request.data
 
-        if cycle.end_date is not None and cycle.end_date < timezone.now():
-            if "sort_order" in request_data:
-                # Can only change sort order
-                request_data = {"sort_order": request_data.get("sort_order", cycle.sort_order)}
-            else:
-                return Response(
-                    {"error": "The Cycle has already been completed so it cannot be edited"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        if not can_edit_cycle(cycle) and set(request_data) != {"sort_order"}:
+            return Response({"error": BACKFILL_LOCKED_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = CycleUpdateSerializer(
-            cycle, data=request.data, partial=True, context={"request": request, "project_id": project_id}
+            cycle, data=request_data, partial=True, context={"request": request, "project_id": project_id}
         )
         if serializer.is_valid():
             if (
@@ -580,7 +601,9 @@ class CycleDetailAPIEndpoint(BaseAPIView):
                     workspace__slug=slug,
                     external_source=request.data.get("external_source", cycle.external_source),
                     external_id=request.data.get("external_id"),
-                ).exists()
+                )
+                .annotate(is_editable=cycle_editable_expression())
+                .exists()
             ):
                 return Response(
                     {
@@ -589,7 +612,9 @@ class CycleDetailAPIEndpoint(BaseAPIView):
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
+            prepare_cycle_snapshot(cycle)
             serializer.save()
+            refresh_cycle_snapshot(cycle)
 
             # Send the model activity
             model_activity.delay(
@@ -668,6 +693,7 @@ class CycleArchiveUnarchiveAPIEndpoint(BaseAPIView):
     def get_queryset(self):
         return (
             Cycle.objects.filter(workspace__slug=self.kwargs.get("slug"))
+            .annotate(is_editable=cycle_editable_expression())
             .filter(project_id=self.kwargs.get("project_id"))
             .filter(
                 project__project_projectmember__member=self.request.user,
@@ -806,18 +832,20 @@ class CycleArchiveUnarchiveAPIEndpoint(BaseAPIView):
             400: CYCLE_CANNOT_ARCHIVE_RESPONSE,
         },
     )
+    @transaction.atomic
     def post(self, request, slug, project_id, cycle_id):
         """Archive cycle
 
         Move a completed cycle to archived status for historical tracking.
         Only cycles that have ended can be archived.
         """
-        cycle = Cycle.objects.get(pk=cycle_id, project_id=project_id, workspace__slug=slug)
-        if cycle.end_date >= timezone.now():
+        cycle = Cycle.objects.select_for_update().get(pk=cycle_id, project_id=project_id, workspace__slug=slug)
+        if cycle.end_date is None or cycle.end_date >= timezone.now():
             return Response(
                 {"error": "Only completed cycles can be archived"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        capture_cycle_snapshot(cycle, [])
         cycle.archived_at = timezone.now()
         cycle.save()
         UserFavorite.objects.filter(
@@ -963,6 +991,7 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
             400: REQUIRED_FIELDS_RESPONSE,
         },
     )
+    @transaction.atomic
     def post(self, request, slug, project_id, cycle_id):
         """Add cycle issues
 
@@ -977,19 +1006,18 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        reporting_cycles = prepare_cycle_membership_change(slug, project_id, cycle_id, issues)
         cycle = Cycle.objects.get(workspace__slug=slug, project_id=project_id, pk=cycle_id)
 
-        if cycle.end_date is not None and cycle.end_date < timezone.now():
-            return Response(
-                {
-                    "code": "CYCLE_COMPLETED",
-                    "message": "The Cycle has already been completed so no new issues can be added",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if not can_edit_cycle(cycle):
+            return Response({"error": BACKFILL_LOCKED_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
 
         # Get all CycleWorkItems already created
-        cycle_issues = list(CycleIssue.objects.filter(~Q(cycle_id=cycle_id), issue_id__in=issues))
+        cycle_issues = list(
+            CycleIssue.objects.filter(
+                ~Q(cycle_id=cycle_id), workspace__slug=slug, project_id=project_id, issue_id__in=issues
+            )
+        )
         existing_issues = [
             str(cycle_issue.issue_id) for cycle_issue in cycle_issues if str(cycle_issue.issue_id) in issues
         ]
@@ -1041,6 +1069,8 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
 
         # Update the cycle issues
         CycleIssue.objects.bulk_update(updated_records, ["cycle_id"], batch_size=100)
+        for reporting_cycle in reporting_cycles:
+            refresh_cycle_snapshot(reporting_cycle)
 
         # Capture Issue Activity
         issue_activity.delay(
@@ -1139,12 +1169,17 @@ class CycleIssueDetailAPIEndpoint(BaseAPIView):
             204: DELETED_RESPONSE,
         },
     )
+    @transaction.atomic
     def delete(self, request, slug, project_id, cycle_id, issue_id):
         """Remove cycle work item
 
         Remove a work item from a cycle while keeping the work item in the project.
         Records the removal activity for tracking purposes.
         """
+        cycle = Cycle.objects.select_for_update().get(workspace__slug=slug, project_id=project_id, pk=cycle_id)
+        if not can_edit_cycle(cycle):
+            return Response({"error": BACKFILL_LOCKED_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
+        prepare_cycle_snapshot(cycle)
         cycle_issue = CycleIssue.objects.get(
             issue_id=issue_id,
             workspace__slug=slug,
@@ -1153,6 +1188,7 @@ class CycleIssueDetailAPIEndpoint(BaseAPIView):
         )
         issue_id = cycle_issue.issue_id
         cycle_issue.delete()
+        refresh_cycle_snapshot(cycle)
         issue_activity.delay(
             type="cycle.activity.deleted",
             requested_data=json.dumps(

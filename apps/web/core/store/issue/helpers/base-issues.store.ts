@@ -275,6 +275,18 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
   abstract updateParentStats: (prevIssueState?: TIssue, nextIssueState?: TIssue, id?: string) => void;
 
+  private refreshCycleStats(workspaceSlug: string, projectId: string, cycleIds: (string | null | undefined)[]) {
+    const cycleStore = this.rootIssueStore.rootStore.cycle;
+    for (const cycleId of new Set(cycleIds)) {
+      if (!cycleId || !cycleStore.getCycleById(cycleId)) continue;
+      // The cycle layout already refreshes its own cycle through fetchParentStats.
+      if (Object.is(this, this.rootIssueStore.cycleIssues) && cycleId === this.cycleId) continue;
+      void cycleStore.fetchCycleDetails(workspaceSlug, projectId, cycleId).catch((error) => {
+        console.error("Failed to refresh cycle statistics", error);
+      });
+    }
+  }
+
   // current Module Id from url
   get moduleId() {
     return this.rootIssueStore.moduleId;
@@ -566,6 +578,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     // If shouldUpdateList is true, call fetchParentStats
     // oxlint-disable-next-line no-unused-expressions
     shouldUpdateList && (await this.fetchParentStats(workspaceSlug, projectId));
+    this.refreshCycleStats(workspaceSlug, projectId, [response.cycle_id]);
 
     return response;
   }
@@ -607,6 +620,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
       // call fetch Parent Stats
       this.fetchParentStats(workspaceSlug, projectId);
+      this.refreshCycleStats(workspaceSlug, projectId, [issueBeforeUpdate?.cycle_id, data.cycle_id]);
     } catch (error) {
       // If errored out update store again to revert the change
       this.rootIssueStore.issues.updateIssue(issueId, issueBeforeUpdate ?? {});
@@ -637,6 +651,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     this.fetchParentStats(workspaceSlug, projectId);
     // Remove issue from main issue Map store
     this.rootIssueStore.issues.removeIssue(issueId);
+    this.refreshCycleStats(workspaceSlug, projectId, [issueBeforeRemoval?.cycle_id]);
   }
 
   /**
@@ -661,6 +676,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
       // Since Archived remove the issue Id from the current store
       this.removeIssueFromList(issueId);
     });
+    this.refreshCycleStats(workspaceSlug, projectId, [issueBeforeArchive?.cycle_id]);
   }
 
   /**
@@ -703,6 +719,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
    * @returns
    */
   async removeBulkIssues(workspaceSlug: string, projectId: string, issueIds: string[]) {
+    const cycleIds = issueIds.map((issueId) => this.rootIssueStore.issues.getIssueById(issueId)?.cycle_id);
     // Make API call to bulk delete issues
     const response = await this.issueService.bulkDeleteIssues(workspaceSlug, projectId, { issue_ids: issueIds });
     // call fetch parent stats
@@ -714,6 +731,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
         this.rootIssueStore.issues.removeIssue(issueId);
       });
     });
+    this.refreshCycleStats(workspaceSlug, projectId, cycleIds);
     return response;
   }
 
@@ -740,6 +758,12 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
         this.removeIssueFromList(issueId);
       });
     });
+    this.fetchParentStats(workspaceSlug, projectId);
+    this.refreshCycleStats(
+      workspaceSlug,
+      projectId,
+      issueIds.map((issueId) => this.rootIssueStore.issues.getIssueById(issueId)?.cycle_id)
+    );
   };
 
   /**
@@ -748,6 +772,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
    */
   bulkUpdateProperties = async (workspaceSlug: string, projectId: string, data: TBulkOperationsPayload) => {
     const issueIds = data.issue_ids;
+    const cycleIds = issueIds.map((issueId) => this.rootIssueStore.issues.getIssueById(issueId)?.cycle_id);
     // make request to update issue properties
     await this.issueService.bulkOperations(workspaceSlug, projectId, data);
     // update issues in the store
@@ -778,6 +803,11 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
         this.updateIssueList(issueDetails, issueBeforeUpdate);
       });
     });
+    this.fetchParentStats(workspaceSlug, projectId);
+    this.refreshCycleStats(workspaceSlug, projectId, [
+      ...cycleIds,
+      ...issueIds.map((issueId) => this.rootIssueStore.issues.getIssueById(issueId)?.cycle_id),
+    ]);
   };
 
   async updateIssueDates(
@@ -811,6 +841,12 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
       });
 
       await this.issueService.updateIssueDates(workspaceSlug, projectId, updates);
+      this.fetchParentStats(workspaceSlug, projectId);
+      this.refreshCycleStats(
+        workspaceSlug,
+        projectId,
+        updates.map(({ id }) => this.rootIssueStore.issues.getIssueById(id)?.cycle_id)
+      );
     } catch (e) {
       runInAction(() => {
         // oxlint-disable-next-line no-shadow
@@ -842,6 +878,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     issueIds: string[],
     fetchAddedIssues = true
   ) {
+    const previousCycleIds = issueIds.map((issueId) => this.rootIssueStore.issues.getIssueById(issueId)?.cycle_id);
     // Perform an APi call to add issue to cycle
     await this.issueService.addIssueToCycle(workspaceSlug, projectId, cycleId, {
       issues: issueIds,
@@ -865,6 +902,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
     issueIds.forEach((issueId) => {
       this.issueUpdate(workspaceSlug, projectId, issueId, { cycle_id: cycleId }, false);
     });
+    this.refreshCycleStats(workspaceSlug, projectId, [...previousCycleIds, cycleId]);
   }
 
   /**
@@ -894,6 +932,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
     // update Issue cycle Id to null by calling current store's update Issue, without making an API call
     this.issueUpdate(workspaceSlug, projectId, issueId, { cycle_id: null }, false);
+    this.refreshCycleStats(workspaceSlug, projectId, [cycleId]);
   }
 
   /**
@@ -935,6 +974,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
       // if cycle Id is the current Cycle Id then call fetch parent stats
       if (this.cycleId === cycleId || this.cycleId === issueCycleId)
         this.fetchParentStats(workspaceSlug, projectId, this.cycleId);
+      this.refreshCycleStats(workspaceSlug, projectId, [issueCycleId, cycleId]);
     } catch (error) {
       // remove the new issue ids from the cycle issues map
       runInAction(() => {
@@ -977,6 +1017,7 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
       // if cycle Id is the current Cycle Id then call fetch parent stats
       if (this.cycleId === issueCycleId) this.fetchParentStats(workspaceSlug, projectId, issueCycleId);
+      this.refreshCycleStats(workspaceSlug, projectId, [issueCycleId]);
     } catch (error) {
       // revert back changes if fails
       // Update issueIds from current store

@@ -73,7 +73,10 @@ export const useCycleMenuItems = (props: UseCycleMenuItemsProps): MenuResult => 
 
   // Assemble final menu items - order defined here
   const items = [
-    factory.createEditMenuItem(handlers.handleEdit, isEditingAllowed && !isCompleted && !isArchived),
+    factory.createEditMenuItem(
+      handlers.handleEdit,
+      isEditingAllowed && cycleDetails?.is_editable === true && !isArchived
+    ),
     factory.createOpenInNewTabMenuItem(handlers.handleOpenInNewTab),
     factory.createCopyLinkMenuItem(handlers.handleCopyLink),
     factory.createArchiveMenuItem(handlers.handleArchive, {

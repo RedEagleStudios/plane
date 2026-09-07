@@ -21,11 +21,13 @@ type Props = {
 export const PowerKWorkItemCyclesMenu = observer(function PowerKWorkItemCyclesMenu(props: Props) {
   const { handleSelect, workItemDetails } = props;
   // store hooks
-  const { getProjectCycleIds, getCycleById } = useCycle();
+  const { getProjectCycleIds, getCycleById, getIsCycleEditable } = useCycle();
   // derived values
   const projectCycleIds = workItemDetails.project_id ? getProjectCycleIds(workItemDetails.project_id) : undefined;
   const cyclesList = projectCycleIds ? projectCycleIds.map((cycleId) => getCycleById(cycleId)) : undefined;
-  const filteredCyclesList = cyclesList ? cyclesList.filter((cycle) => !!cycle) : undefined;
+  const filteredCyclesList = cyclesList
+    ? cyclesList.filter((cycle): cycle is ICycle => !!cycle && getIsCycleEditable(cycle.id))
+    : undefined;
 
   if (!filteredCyclesList) return <Spinner />;
 

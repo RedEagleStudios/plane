@@ -78,6 +78,13 @@ export const CycleAnalyticsProgress = observer(function CycleAnalyticsProgress(p
   const estimateType = getEstimateTypeByCycleId(cycleId);
   const totalIssues = cycleDetails?.total_issues || 0;
   const totalEstimatePoints = cycleDetails?.total_estimate_points || 0;
+  const hasKnownEstimateBreakdown =
+    cycleDetails?.backlog_estimate_points != null &&
+    cycleDetails.unstarted_estimate_points != null &&
+    cycleDetails.started_estimate_points != null &&
+    cycleDetails.completed_estimate_points != null &&
+    cycleDetails.cancelled_estimate_points != null &&
+    cycleDetails.total_estimate_points != null;
   const chartDistributionData =
     estimateType === "points" ? cycleDetails?.estimate_distribution : cycleDetails?.distribution || undefined;
   const groupedIssues = useMemo(
@@ -134,7 +141,7 @@ export const CycleAnalyticsProgress = observer(function CycleAnalyticsProgress(p
                       <SidebarChart workspaceSlug={workspaceSlug} projectId={projectId} cycleId={cycleId} />
                     )}
                     {/* progress detailed view */}
-                    {chartDistributionData && (
+                    {chartDistributionData && (estimateType !== "points" || hasKnownEstimateBreakdown) && (
                       <div className="w-full py-4">
                         <CycleProgressStats
                           cycleId={cycleId}

@@ -609,9 +609,7 @@ class IssueDetailAPIEndpoint(BaseAPIView):
             ]
         if request.query_params.get("include_module") == "true":
             module_issue = (
-                ModuleIssue.objects.filter(issue=issue, deleted_at__isnull=True)
-                .select_related("module")
-                .first()
+                ModuleIssue.objects.filter(issue=issue, deleted_at__isnull=True).select_related("module").first()
             )
             data["module"] = (
                 {
@@ -895,7 +893,10 @@ class IssueDetailAPIEndpoint(BaseAPIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         current_instance = json.dumps(IssueSerializer(issue).data, cls=DjangoJSONEncoder)
-        issue.delete()
+        from plane.utils.cycle_backfill import cycle_issue_mutation
+
+        with cycle_issue_mutation(issue):
+            issue.delete()
         issue_activity.delay(
             type="issue.activity.deleted",
             requested_data=json.dumps({"issue_id": str(pk)}),

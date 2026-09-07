@@ -26,7 +26,7 @@ from django.db.models import (
     Sum,
     FloatField,
 )
-from django.db import models
+from django.db import models, transaction
 from django.db.models.functions import Coalesce, Cast, Concat
 from django.utils import timezone
 from django.core.serializers.json import DjangoJSONEncoder
@@ -59,6 +59,8 @@ from plane.utils.cycle_transfer_issues import transfer_cycle_issues
 from .. import BaseAPIView, BaseViewSet
 from plane.bgtasks.webhook_task import model_activity
 from plane.utils.timezone_converter import convert_to_utc, user_timezone_converter
+from plane.utils.cycle_backfill import BACKFILL_LOCKED_MESSAGE, can_edit_cycle, cycle_editable_expression
+from plane.utils.cycle_snapshot import prepare_cycle_snapshot, refresh_cycle_snapshot, public_snapshot
 
 
 class CycleViewSet(BaseViewSet):
@@ -111,6 +113,7 @@ class CycleViewSet(BaseViewSet):
                 )
             )
             .annotate(is_favorite=Exists(favorite_subquery))
+            .annotate(is_editable=cycle_editable_expression())
             .annotate(
                 total_issues=Count(
                     "issue_cycle__issue__id",
@@ -227,11 +230,14 @@ class CycleViewSet(BaseViewSet):
                 "cancelled_issues",
                 "assignee_ids",
                 "status",
+                "is_editable",
                 "version",
                 "created_by",
             )
             datetime_fields = ["start_date", "end_date"]
             data = user_timezone_converter(data, datetime_fields, project_timezone)
+            for cycle in data:
+                cycle["progress_snapshot"] = public_snapshot(cycle["progress_snapshot"])
 
             if data:
                 return Response(data, status=status.HTTP_200_OK)
@@ -260,11 +266,14 @@ class CycleViewSet(BaseViewSet):
             "completed_issues",
             "assignee_ids",
             "status",
+            "is_editable",
             "version",
             "created_by",
         )
         datetime_fields = ["start_date", "end_date"]
         data = user_timezone_converter(data, datetime_fields, project_timezone)
+        for cycle in data:
+            cycle["progress_snapshot"] = public_snapshot(cycle["progress_snapshot"])
         return Response(data, status=status.HTTP_200_OK)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
@@ -302,6 +311,7 @@ class CycleViewSet(BaseViewSet):
                         "completed_issues",
                         "assignee_ids",
                         "status",
+                        "is_editable",
                         "created_by",
                     )
                     .first()
@@ -313,6 +323,7 @@ class CycleViewSet(BaseViewSet):
 
                 datetime_fields = ["start_date", "end_date"]
                 cycle = user_timezone_converter(cycle, datetime_fields, project_timezone)
+                cycle["progress_snapshot"] = public_snapshot(cycle["progress_snapshot"])
 
                 # Send the model activity
                 model_activity.delay(
@@ -333,9 +344,10 @@ class CycleViewSet(BaseViewSet):
             )
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    @transaction.atomic
     def partial_update(self, request, slug, project_id, pk):
         queryset = self.get_queryset().filter(workspace__slug=slug, project_id=project_id, pk=pk)
-        cycle = queryset.first()
+        cycle = Cycle.objects.select_for_update().get(workspace__slug=slug, project_id=project_id, pk=pk)
         if cycle.archived_at:
             return Response(
                 {"error": "Archived cycle cannot be updated"},
@@ -346,19 +358,14 @@ class CycleViewSet(BaseViewSet):
 
         request_data = request.data
 
-        if cycle.end_date is not None and cycle.end_date < timezone.now():
-            if "sort_order" in request_data:
-                # Can only change sort order for a completed cycle``
-                request_data = {"sort_order": request_data.get("sort_order", cycle.sort_order)}
-            else:
-                return Response(
-                    {"error": "The Cycle has already been completed so it cannot be edited"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        if not can_edit_cycle(cycle) and set(request_data) != {"sort_order"}:
+            return Response({"error": BACKFILL_LOCKED_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = CycleWriteSerializer(cycle, data=request.data, partial=True, context={"project_id": project_id})
+        serializer = CycleWriteSerializer(cycle, data=request_data, partial=True, context={"project_id": project_id})
         if serializer.is_valid():
+            prepare_cycle_snapshot(cycle)
             serializer.save()
+            refresh_cycle_snapshot(cycle)
             cycle = queryset.values(
                 # necessary fields
                 "id",
@@ -383,6 +390,7 @@ class CycleViewSet(BaseViewSet):
                 "completed_issues",
                 "assignee_ids",
                 "status",
+                "is_editable",
                 "created_by",
             ).first()
 
@@ -392,6 +400,7 @@ class CycleViewSet(BaseViewSet):
 
             datetime_fields = ["start_date", "end_date"]
             cycle = user_timezone_converter(cycle, datetime_fields, project_timezone)
+            cycle["progress_snapshot"] = public_snapshot(cycle["progress_snapshot"])
 
             # Send the model activity
             model_activity.delay(
@@ -450,6 +459,7 @@ class CycleViewSet(BaseViewSet):
                 "completed_issues",
                 "assignee_ids",
                 "status",
+                "is_editable",
                 "created_by",
             )
             .first()
@@ -464,6 +474,7 @@ class CycleViewSet(BaseViewSet):
         project_timezone = project.timezone
         datetime_fields = ["start_date", "end_date"]
         data = user_timezone_converter(data, datetime_fields, project_timezone)
+        data["progress_snapshot"] = public_snapshot(data["progress_snapshot"])
 
         recent_visited_task.delay(
             slug=slug,
@@ -661,6 +672,27 @@ class CycleProgressEndpoint(BaseAPIView):
         cycle = Cycle.objects.filter(workspace__slug=slug, project_id=project_id, id=cycle_id).first()
         if not cycle:
             return Response({"error": "Cycle not found"}, status=status.HTTP_404_NOT_FOUND)
+        prepare_cycle_snapshot(cycle)
+        if cycle.progress_snapshot:
+            snapshot = public_snapshot(cycle.progress_snapshot)
+            fields = (
+                "backlog_issues",
+                "unstarted_issues",
+                "started_issues",
+                "cancelled_issues",
+                "completed_issues",
+                "total_issues",
+                "backlog_estimate_points",
+                "unstarted_estimate_points",
+                "started_estimate_points",
+                "cancelled_estimate_points",
+                "completed_estimate_points",
+                "total_estimate_points",
+            )
+            return Response(
+                {field: snapshot[field] for field in fields if field in snapshot},
+                status=status.HTTP_200_OK,
+            )
         aggregate_estimates = (
             Issue.issue_objects.filter(
                 estimate_point__estimate__type="points",
@@ -709,60 +741,18 @@ class CycleProgressEndpoint(BaseAPIView):
                 total_estimate_points=Sum("value_as_float", default=Value(0), output_field=FloatField()),
             )
         )
-        if cycle.progress_snapshot:
-            backlog_issues = cycle.progress_snapshot.get("backlog_issues", 0)
-            unstarted_issues = cycle.progress_snapshot.get("unstarted_issues", 0)
-            started_issues = cycle.progress_snapshot.get("started_issues", 0)
-            cancelled_issues = cycle.progress_snapshot.get("cancelled_issues", 0)
-            completed_issues = cycle.progress_snapshot.get("completed_issues", 0)
-            total_issues = cycle.progress_snapshot.get("total_issues", 0)
-        else:
-            backlog_issues = Issue.issue_objects.filter(
-                issue_cycle__cycle_id=cycle_id,
-                issue_cycle__deleted_at__isnull=True,
-                workspace__slug=slug,
-                project_id=project_id,
-                state__group="backlog",
-            ).count()
-
-            unstarted_issues = Issue.issue_objects.filter(
-                issue_cycle__cycle_id=cycle_id,
-                issue_cycle__deleted_at__isnull=True,
-                workspace__slug=slug,
-                project_id=project_id,
-                state__group="unstarted",
-            ).count()
-
-            started_issues = Issue.issue_objects.filter(
-                issue_cycle__cycle_id=cycle_id,
-                issue_cycle__deleted_at__isnull=True,
-                workspace__slug=slug,
-                project_id=project_id,
-                state__group="started",
-            ).count()
-
-            cancelled_issues = Issue.issue_objects.filter(
-                issue_cycle__cycle_id=cycle_id,
-                issue_cycle__deleted_at__isnull=True,
-                workspace__slug=slug,
-                project_id=project_id,
-                state__group="cancelled",
-            ).count()
-
-            completed_issues = Issue.issue_objects.filter(
-                issue_cycle__cycle_id=cycle_id,
-                issue_cycle__deleted_at__isnull=True,
-                workspace__slug=slug,
-                project_id=project_id,
-                state__group="completed",
-            ).count()
-
-            total_issues = Issue.issue_objects.filter(
-                issue_cycle__cycle_id=cycle_id,
-                issue_cycle__deleted_at__isnull=True,
-                workspace__slug=slug,
-                project_id=project_id,
-            ).count()
+        issue_counts = Issue.issue_objects.filter(
+            issue_cycle__cycle_id=cycle_id,
+            issue_cycle__deleted_at__isnull=True,
+            workspace__slug=slug,
+            project_id=project_id,
+        ).aggregate(
+            total_issues=Count("id"),
+            **{
+                f"{group}_issues": Count("id", filter=Q(state__group=group))
+                for group in ("backlog", "unstarted", "started", "cancelled", "completed")
+            },
+        )
 
         return Response(
             {
@@ -772,12 +762,7 @@ class CycleProgressEndpoint(BaseAPIView):
                 "cancelled_estimate_points": aggregate_estimates["cancelled_estimate_point"] or 0,
                 "completed_estimate_points": aggregate_estimates["completed_estimate_points"] or 0,
                 "total_estimate_points": aggregate_estimates["total_estimate_points"],
-                "backlog_issues": backlog_issues,
-                "total_issues": total_issues,
-                "completed_issues": completed_issues,
-                "cancelled_issues": cancelled_issues,
-                "started_issues": started_issues,
-                "unstarted_issues": unstarted_issues,
+                **issue_counts,
             },
             status=status.HTTP_200_OK,
         )
@@ -804,22 +789,19 @@ class CycleAnalyticsEndpoint(BaseAPIView):
             .first()
         )
 
+        if not cycle:
+            return Response({"error": "Cycle not found"}, status=status.HTTP_404_NOT_FOUND)
         if not cycle.start_date or not cycle.end_date:
             return Response(
                 {"error": "Cycle has no start or end date"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # this will tell whether the issues were transferred to the new cycle
-        """ 
-        if the issues were transferred to the new cycle, then the progress_snapshot will be present
-        return the progress_snapshot data in the analytics for each date
-            
-        else issues were not transferred to the new cycle then generate the stats from the cycle issue bridge tables
-        """
+        prepare_cycle_snapshot(cycle)
 
         if cycle.progress_snapshot:
-            distribution = cycle.progress_snapshot.get("distribution", {})
+            key = "estimate_distribution" if analytic_type == "points" else "distribution"
+            distribution = cycle.progress_snapshot.get(key, {})
             return Response(
                 {
                     "labels": distribution.get("labels", []),

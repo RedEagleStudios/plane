@@ -185,7 +185,7 @@ const getCycleColumns = (): IGroupByColumn[] | undefined => {
   const { currentProjectDetails } = store.projectRoot.project;
   // Check for the current project details
   if (!currentProjectDetails || !currentProjectDetails?.id) return;
-  const { getProjectCycleDetails } = store.cycle;
+  const { getProjectCycleDetails, getIsCycleEditable } = store.cycle;
   // Get the cycle details for the current project
   const cycleDetails = currentProjectDetails?.id ? getProjectCycleDetails(currentProjectDetails?.id) : undefined;
   const orderedCycleDetails = cycleDetails ? orderCyclesForGrouping(cycleDetails) : undefined;
@@ -193,14 +193,14 @@ const getCycleColumns = (): IGroupByColumn[] | undefined => {
   const cycles: IGroupByColumn[] = [];
   orderedCycleDetails?.map((cycle) => {
     const cycleStatus = cycle.status ? (cycle.status.toLocaleLowerCase() as TCycleGroups) : "draft";
-    const isDropDisabled = cycleStatus === "completed";
+    const isDropDisabled = !getIsCycleEditable(cycle.id);
     cycles.push({
       id: cycle.id,
       name: cycle.name,
       icon: <CycleGroupIcon cycleGroup={cycleStatus} className="h-3.5 w-3.5" />,
       payload: { cycle_id: cycle.id },
       isDropDisabled,
-      dropErrorMessage: isDropDisabled ? "Work item cannot be moved to completed cycles" : undefined,
+      dropErrorMessage: isDropDisabled ? "Work item cannot be moved to this cycle" : undefined,
     });
   });
   cycles.push({

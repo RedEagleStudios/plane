@@ -17,6 +17,7 @@ from .user import UserLiteSerializer
 from .state import StateLiteSerializer
 from .project import ProjectLiteSerializer
 from .workspace import WorkspaceLiteSerializer
+from plane.utils.cycle_backfill import CYCLE_REPORT_FIELDS, cycle_issue_mutation
 from plane.db.models import (
     User,
     Issue,
@@ -195,6 +196,12 @@ class IssueCreateSerializer(BaseSerializer):
             raise serializers.ValidationError("Estimate point is not valid please pass a valid estimate_point_id")
 
         return attrs
+
+    def save(self, **kwargs):
+        if self.instance is None or CYCLE_REPORT_FIELDS.isdisjoint(self.validated_data):
+            return super().save(**kwargs)
+        with cycle_issue_mutation(self.instance):
+            return super().save(**kwargs)
 
     def create(self, validated_data):
         assignees = validated_data.pop("assignee_ids", None)
@@ -488,6 +495,14 @@ class IssueAssigneeSerializer(BaseSerializer):
 
 
 class CycleBaseSerializer(BaseSerializer):
+    def to_representation(self, instance):
+        from plane.utils.cycle_snapshot import public_snapshot
+
+        data = super().to_representation(instance)
+        if "progress_snapshot" in data:
+            data["progress_snapshot"] = public_snapshot(data["progress_snapshot"])
+        return data
+
     class Meta:
         model = Cycle
         fields = "__all__"

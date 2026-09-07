@@ -8,6 +8,14 @@ from plane.db.models import Cycle
 
 
 class CycleBaseSerializer(BaseSerializer):
+    def to_representation(self, instance):
+        from plane.utils.cycle_snapshot import public_snapshot
+
+        data = super().to_representation(instance)
+        if "progress_snapshot" in data:
+            data["progress_snapshot"] = public_snapshot(data["progress_snapshot"])
+        return data
+
     class Meta:
         model = Cycle
         fields = "__all__"

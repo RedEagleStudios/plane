@@ -7,24 +7,34 @@
 import { useCallback } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
+import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
 import { EIssuesStoreType } from "@plane/types";
 // hooks
 import { useCycle } from "@/hooks/store/use-cycle";
 import { useIssues } from "@/hooks/store/use-issues";
+import { useUserPermissions } from "@/hooks/store/user";
 // components
 import { CycleIssueQuickActions } from "../../quick-action-dropdowns";
 import { BaseCalendarRoot } from "../base-calendar-root";
 
 export const CycleCalendarLayout = observer(function CycleCalendarLayout() {
-  const { currentProjectCompletedCycleIds } = useCycle();
+  const { getIsCycleEditable } = useCycle();
+  const { allowPermissions } = useUserPermissions();
   const { workspaceSlug, projectId, cycleId } = useParams();
 
   const {
     issues: { addIssueToCycle },
   } = useIssues(EIssuesStoreType.CYCLE);
 
-  const isCompletedCycle =
-    cycleId && currentProjectCompletedCycleIds ? currentProjectCompletedCycleIds.includes(cycleId.toString()) : false;
+  const isCompletedCycle = !cycleId || !getIsCycleEditable(cycleId.toString());
+  const isEditingAllowed = allowPermissions(
+    [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
+    EUserPermissionsLevel.PROJECT
+  );
+  const canEditIssueProperties = useCallback(
+    () => !isCompletedCycle && isEditingAllowed,
+    [isCompletedCycle, isEditingAllowed]
+  );
 
   const addIssuesToView = useCallback(
     (issueIds: string[]) => {
@@ -40,6 +50,7 @@ export const CycleCalendarLayout = observer(function CycleCalendarLayout() {
     <BaseCalendarRoot
       QuickActions={CycleIssueQuickActions}
       addIssuesToView={addIssuesToView}
+      canEditPropertiesBasedOnProject={canEditIssueProperties}
       isCompletedCycle={isCompletedCycle}
       viewId={cycleId?.toString()}
     />

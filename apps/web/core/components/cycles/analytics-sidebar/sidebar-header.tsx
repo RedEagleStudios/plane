@@ -5,6 +5,7 @@
  */
 
 import { useEffect } from "react";
+import { subDays } from "date-fns";
 import { observer } from "mobx-react";
 import { Controller, useForm } from "react-hook-form";
 import { ArrowRight } from "lucide-react";
@@ -82,6 +83,7 @@ export const CycleSidebarHeader = observer(function CycleSidebarHeader(props: Pr
   };
 
   const handleDateChange = async (startDate: Date | undefined, endDate: Date | undefined) => {
+    if (isCompleted && (!startDate || !endDate)) return false;
     let isDateValid = false;
 
     const payload = {
@@ -98,7 +100,7 @@ export const CycleSidebarHeader = observer(function CycleSidebarHeader(props: Pr
       isDateValid = true;
     }
     if (isDateValid) {
-      submitChanges(payload);
+      await submitChanges(payload);
       setToast({
         type: TOAST_TYPE.SUCCESS,
         title: t("project_cycles.action.update.success.title"),
@@ -159,7 +161,8 @@ export const CycleSidebarHeader = observer(function CycleSidebarHeader(props: Pr
                   <DateRangeDropdown
                     className="h-7"
                     buttonVariant="border-with-text"
-                    minDate={new Date()}
+                    minDate={isCompleted ? undefined : new Date()}
+                    maxDate={isCompleted ? subDays(new Date(), 1) : undefined}
                     value={{
                       from: getDate(startDateValue),
                       to: getDate(endDateValue),
@@ -186,7 +189,9 @@ export const CycleSidebarHeader = observer(function CycleSidebarHeader(props: Pr
                     mergeDates
                     showTooltip={!!cycleDetails.start_date && !!cycleDetails.end_date} // show tooltip only if both start and end date are present
                     required={cycleDetails.status !== "draft"}
-                    disabled={!isEditingAllowed || isArchived || isCompleted}
+                    disabled={
+                      !isEditingAllowed || isArchived || !!cycleDetails.archived_at || cycleDetails.is_editable !== true
+                    }
                   />
                 )}
               />

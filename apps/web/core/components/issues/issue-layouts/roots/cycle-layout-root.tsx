@@ -5,12 +5,16 @@
  */
 
 import React, { useState } from "react";
-import { isEmpty } from "lodash-es";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
 // plane constants
-import { ISSUE_DISPLAY_FILTERS_BY_PAGE, PROJECT_VIEW_TRACKER_ELEMENTS } from "@plane/constants";
+import {
+  EUserPermissions,
+  EUserPermissionsLevel,
+  ISSUE_DISPLAY_FILTERS_BY_PAGE,
+  PROJECT_VIEW_TRACKER_ELEMENTS,
+} from "@plane/constants";
 import { EIssuesStoreType, EIssueLayoutTypes } from "@plane/types";
 // components
 import { TransferIssues } from "@/components/cycles/transfer-issues";
@@ -20,6 +24,7 @@ import { ProjectLevelWorkItemFiltersHOC } from "@/components/work-item-filters/f
 import { WorkItemFiltersRow } from "@/components/work-item-filters/filters-row";
 import { useCycle } from "@/hooks/store/use-cycle";
 import { useIssues } from "@/hooks/store/use-issues";
+import { useUserPermissions } from "@/hooks/store/user";
 import { IssuesStoreContext } from "@/hooks/use-issue-layout-store";
 // local imports
 import { IssuePeekOverview } from "../../peek-overview";
@@ -57,7 +62,8 @@ export const CycleLayoutRoot = observer(function CycleLayoutRoot() {
   const cycleId = routerCycleId ? routerCycleId.toString() : undefined;
   // store hooks
   const { issuesFilter } = useIssues(EIssuesStoreType.CYCLE);
-  const { getCycleById } = useCycle();
+  const { getCycleById, getIsCycleEditable } = useCycle();
+  const { allowPermissions } = useUserPermissions();
   // state
   const [transferIssuesModal, setTransferIssuesModal] = useState(false);
   // derived values
@@ -76,12 +82,14 @@ export const CycleLayoutRoot = observer(function CycleLayoutRoot() {
 
   const cycleDetails = cycleId ? getCycleById(cycleId) : undefined;
   const cycleStatus = cycleDetails?.status?.toLocaleLowerCase() ?? "draft";
-  const isCompletedCycle = cycleStatus === "completed";
-  const isProgressSnapshotEmpty = isEmpty(cycleDetails?.progress_snapshot);
+  const isCompletedCycle = !cycleId || !getIsCycleEditable(cycleId);
   const transferableIssuesCount = cycleDetails
     ? cycleDetails.backlog_issues + cycleDetails.unstarted_issues + cycleDetails.started_issues
     : 0;
-  const canTransferIssues = isProgressSnapshotEmpty && transferableIssuesCount > 0;
+  const canTransferIssues =
+    transferableIssuesCount > 0 &&
+    !cycleDetails?.archived_at &&
+    allowPermissions([EUserPermissions.ADMIN, EUserPermissions.MEMBER], EUserPermissionsLevel.PROJECT);
 
   if (!workspaceSlug || !projectId || !cycleId || !workItemFilters) return <></>;
   return (
@@ -108,7 +116,7 @@ export const CycleLayoutRoot = observer(function CycleLayoutRoot() {
                 <TransferIssues
                   handleClick={() => setTransferIssuesModal(true)}
                   canTransferIssues={canTransferIssues}
-                  disabled={!isEmpty(cycleDetails?.progress_snapshot)}
+                  isEditable={!!cycleId && getIsCycleEditable(cycleId)}
                 />
               )}
               {cycleWorkItemsFilter && (

@@ -50,6 +50,9 @@ from plane.utils.filters import ComplexFilterBackend
 from plane.utils.filters import IssueFilterSet
 
 
+from plane.utils.cycle_backfill import cycle_issue_mutation, cycle_issues_mutation
+
+
 class IssueArchiveViewSet(BaseViewSet):
     serializer_class = IssueFlatSerializer
     model = Issue
@@ -273,7 +276,8 @@ class IssueArchiveViewSet(BaseViewSet):
             origin=base_host(request=request, is_app=True),
         )
         issue.archived_at = timezone.now().date()
-        issue.save()
+        with cycle_issue_mutation(issue):
+            issue.save()
 
         return Response({"archived_at": str(issue.archived_at)}, status=status.HTTP_200_OK)
 
@@ -297,7 +301,8 @@ class IssueArchiveViewSet(BaseViewSet):
             origin=base_host(request=request, is_app=True),
         )
         issue.archived_at = None
-        issue.save()
+        with cycle_issue_mutation(issue):
+            issue.save()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -338,6 +343,7 @@ class BulkArchiveIssuesEndpoint(BaseAPIView):
             )
             issue.archived_at = timezone.now().date()
             bulk_archive_issues.append(issue)
-        Issue.objects.bulk_update(bulk_archive_issues, ["archived_at"])
+        with cycle_issues_mutation(issues):
+            Issue.objects.bulk_update(bulk_archive_issues, ["archived_at"])
 
         return Response({"archived_at": str(timezone.now().date())}, status=status.HTTP_200_OK)

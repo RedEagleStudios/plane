@@ -27,7 +27,7 @@ export const TransferIssuesModal = observer(function TransferIssuesModal(props: 
   const [query, setQuery] = useState("");
 
   // store hooks
-  const { currentProjectIncompleteCycleIds, getCycleById, fetchActiveCycleProgress } = useCycle();
+  const { currentProjectCycleIds, getCycleById, getIsCycleEditable } = useCycle();
   const {
     issues: { transferIssuesFromCycle },
   } = useIssues(EIssuesStoreType.CYCLE);
@@ -37,43 +37,30 @@ export const TransferIssuesModal = observer(function TransferIssuesModal(props: 
   const transferIssue = async (payload: { new_cycle_id: string }) => {
     if (!workspaceSlug || !projectId || !cycleId) return;
 
-    await transferIssuesFromCycle(workspaceSlug.toString(), projectId.toString(), cycleId.toString(), payload)
-      .then(async () => {
-        setToast({
-          type: TOAST_TYPE.SUCCESS,
-          title: "Success!",
-          message: "Work items have been transferred successfully",
-        });
-        await getCycleDetails(payload.new_cycle_id);
-      })
-      .catch(() => {
-        setToast({
-          type: TOAST_TYPE.ERROR,
-          title: "Error!",
-          message: "Unable to transfer work items. Please try again.",
-        });
+    try {
+      await transferIssuesFromCycle(workspaceSlug.toString(), projectId.toString(), cycleId.toString(), payload);
+      setToast({
+        type: TOAST_TYPE.SUCCESS,
+        title: "Success!",
+        message: "Work items have been transferred successfully",
       });
-  };
-
-  /**To update issue counts in target cycle and current cycle */
-  const getCycleDetails = async (newCycleId: string) => {
-    const cyclesFetch = [
-      fetchActiveCycleProgress(workspaceSlug.toString(), projectId.toString(), cycleId),
-      fetchActiveCycleProgress(workspaceSlug.toString(), projectId.toString(), newCycleId),
-    ];
-    await Promise.all(cyclesFetch).catch((error) => {
+    } catch {
       setToast({
         type: TOAST_TYPE.ERROR,
-        title: "Error",
-        message: error.error || "Unable to fetch cycle details",
+        title: "Error!",
+        message: "Unable to transfer work items. Please try again.",
       });
-    });
+    }
   };
 
-  const filteredOptions = currentProjectIncompleteCycleIds?.filter((optionId) => {
+  const filteredOptions = currentProjectCycleIds?.filter((optionId) => {
     const cycleDetails = getCycleById(optionId);
 
-    return cycleDetails?.name?.toLowerCase().includes(query?.toLowerCase());
+    return (
+      optionId !== cycleId &&
+      getIsCycleEditable(optionId) &&
+      cycleDetails?.name?.toLowerCase().includes(query.toLowerCase())
+    );
   });
 
   return (

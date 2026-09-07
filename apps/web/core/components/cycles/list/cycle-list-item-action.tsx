@@ -191,7 +191,7 @@ export const CycleListItemAction = observer(function CycleListItemAction(props: 
           <span className="text-11 text-tertiary">{cycleDetails.total_issues}</span>
         </div>
       )}
-      {showTransferIssues && (
+      {showTransferIssues && isEditingAllowed && !cycleDetails.archived_at && (
         // oxlint-disable-next-line jsx_a11y/click-events-have-key-events oxlint-disable-next-line jsx_a11y/no-static-element-interactions
         <div
           className="flex h-6 cursor-pointer items-center gap-1 px-2 text-accent-secondary"

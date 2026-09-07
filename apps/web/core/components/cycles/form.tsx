@@ -5,6 +5,7 @@
  */
 
 import { useEffect } from "react";
+import { subDays } from "date-fns";
 import { Controller, useForm } from "react-hook-form";
 // plane imports
 import { ETabIndices } from "@plane/constants";
@@ -61,6 +62,8 @@ export function CycleForm(props: Props) {
   });
 
   const { getIndex } = getTabIndex(ETabIndices.PROJECT_CYCLE, isMobile);
+  const isCompleted = data?.status?.toLowerCase() === "completed";
+  const canEditCycle = !data || (data.is_editable === true && !data.archived_at);
 
   useEffect(() => {
     reset({
@@ -89,7 +92,7 @@ export function CycleForm(props: Props) {
                     }}
                     multiple={false}
                     buttonVariant="border-with-text"
-                    renderCondition={(projectId) => !!projectsWithCreatePermissions?.[projectId]}
+                    renderCondition={(candidateProjectId) => !!projectsWithCreatePermissions?.[candidateProjectId]}
                     tabIndex={getIndex("cover_image")}
                   />
                 </div>
@@ -123,7 +126,6 @@ export function CycleForm(props: Props) {
                   onChange={onChange}
                   hasError={Boolean(errors?.name)}
                   tabIndex={getIndex("description")}
-                  autoFocus
                 />
               )}
             />
@@ -158,12 +160,15 @@ export function CycleForm(props: Props) {
                     <DateRangeDropdown
                       buttonVariant="border-with-text"
                       className="h-7"
-                      minDate={new Date()}
+                      minDate={isCompleted ? undefined : new Date()}
+                      maxDate={isCompleted ? subDays(new Date(), 1) : undefined}
+                      disabled={!canEditCycle}
                       value={{
                         from: getDate(startDateValue),
                         to: getDate(endDateValue),
                       }}
                       onSelect={(val) => {
+                        if (isCompleted && (!val?.from || !val.to)) return;
                         onChangeStartDate(val?.from ? renderFormattedPayloadDate(val.from) : null);
                         onChangeEndDate(val?.to ? renderFormattedPayloadDate(val.to) : null);
                       }}
@@ -187,7 +192,14 @@ export function CycleForm(props: Props) {
         <Button variant="secondary" size="lg" onClick={handleClose} tabIndex={getIndex("cancel")}>
           {t("common.cancel")}
         </Button>
-        <Button variant="primary" size="lg" type="submit" loading={isSubmitting} tabIndex={getIndex("submit")}>
+        <Button
+          variant="primary"
+          size="lg"
+          type="submit"
+          loading={isSubmitting}
+          disabled={!canEditCycle}
+          tabIndex={getIndex("submit")}
+        >
           {data
             ? isSubmitting
               ? t("common.updating")

@@ -14,16 +14,20 @@ type Props = {
   handleClick: () => void;
   canTransferIssues?: boolean;
   disabled?: boolean;
+  isEditable?: boolean;
 };
 
 export function TransferIssues(props: Props) {
-  const { handleClick, canTransferIssues = false, disabled = false } = props;
+  const { handleClick, canTransferIssues = false, disabled = false, isEditable = false } = props;
+  if (isEditable && !canTransferIssues) return null;
   return (
     <div className="-mt-2 mb-4 flex items-center justify-between px-4 pt-6">
-      <div className="flex items-center gap-2 text-13 text-secondary">
-        <AlertCircle className="h-3.5 w-3.5 text-secondary" />
-        <span>Completed cycles are not editable.</span>
-      </div>
+      {!isEditable && (
+        <div className="flex items-center gap-2 text-13 text-secondary">
+          <AlertCircle className="h-3.5 w-3.5 text-secondary" />
+          <span>This cycle is no longer editable.</span>
+        </div>
+      )}
 
       {canTransferIssues && (
         <div>

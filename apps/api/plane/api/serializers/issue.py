@@ -41,6 +41,7 @@ from .user import UserLiteSerializer
 # Django imports
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
+from plane.utils.cycle_backfill import CYCLE_REPORT_FIELDS, cycle_issue_mutation
 
 
 class IssueSerializer(BaseSerializer):
@@ -71,6 +72,12 @@ class IssueSerializer(BaseSerializer):
         model = Issue
         read_only_fields = ["id", "workspace", "project", "updated_by", "updated_at", "completed_at"]
         exclude = ["description_json", "description_stripped"]
+
+    def save(self, **kwargs):
+        if self.instance is None or CYCLE_REPORT_FIELDS.isdisjoint(self.validated_data):
+            return super().save(**kwargs)
+        with cycle_issue_mutation(self.instance):
+            return super().save(**kwargs)
 
     def validate(self, data):
         if (

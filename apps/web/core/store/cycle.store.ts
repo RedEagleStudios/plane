@@ -52,6 +52,7 @@ export interface ICycleStore {
   getFilteredCompletedCycleIds: (projectId: string) => string[] | null;
   getFilteredArchivedCycleIds: (projectId: string) => string[] | null;
   getCycleById: (cycleId: string) => ICycle | null;
+  getIsCycleEditable: (cycleId: string) => boolean;
   getCycleNameById: (cycleId: string) => string | undefined;
   getProjectCycleDetails: (projectId: string) => ICycle[] | null;
   getProjectCycleIds: (projectId: string) => string[] | null;
@@ -325,6 +326,11 @@ export class CycleStore implements ICycleStore {
    */
   getCycleById = computedFn((cycleId: string): ICycle | null => this.cycleMap?.[cycleId] ?? null);
 
+  getIsCycleEditable = computedFn((cycleId: string): boolean => {
+    const cycle = this.getCycleById(cycleId);
+    return !!cycle && !cycle.archived_at && cycle.is_editable === true;
+  });
+
   /**
    * @description returns cycle name by cycle id
    * @param cycleId
@@ -548,10 +554,18 @@ export class CycleStore implements ICycleStore {
    * @returns
    */
   fetchCycleDetails = async (workspaceSlug: string, projectId: string, cycleId: string) =>
-    await this.cycleService.getCycleDetails(workspaceSlug, projectId, cycleId).then((response) => {
+    await this.cycleService.getCycleDetails(workspaceSlug, projectId, cycleId).then(async (response) => {
       runInAction(() => {
         set(this.cycleMap, [response.id], { ...this.cycleMap?.[response.id], ...response });
       });
+      await Promise.all([
+        ...(this.cycleMap[cycleId]?.distribution
+          ? [this.fetchActiveCycleAnalytics(workspaceSlug, projectId, cycleId, "issues")]
+          : []),
+        ...(this.cycleMap[cycleId]?.estimate_distribution
+          ? [this.fetchActiveCycleAnalytics(workspaceSlug, projectId, cycleId, "points")]
+          : []),
+      ]);
       return response;
     });
 
@@ -563,8 +577,7 @@ export class CycleStore implements ICycleStore {
    */
   updateCycleDistribution = (distributionUpdates: DistributionUpdates, cycleId: string) => {
     const cycle = this.getCycleById(cycleId);
-    if (!cycle) return;
-
+    if (!cycle || cycle.status?.toLowerCase() === "completed") return;
     runInAction(() => {
       updateDistribution(cycle, distributionUpdates);
     });
@@ -601,7 +614,10 @@ export class CycleStore implements ICycleStore {
         set(this.cycleMap, [cycleId], { ...this.cycleMap?.[cycleId], ...data });
       });
       const response = await this.cycleService.patchCycle(workspaceSlug, projectId, cycleId, data);
-      this.fetchCycleDetails(workspaceSlug, projectId, cycleId);
+      if (data.start_date !== undefined || data.end_date !== undefined) {
+        await this.fetchAllCycles(workspaceSlug, projectId);
+      }
+      await this.fetchCycleDetails(workspaceSlug, projectId, cycleId);
       return response;
     } catch (error) {
       console.log("Failed to patch cycle from cycle store");
@@ -714,6 +730,7 @@ export class CycleStore implements ICycleStore {
       runInAction(() => {
         set(this.cycleMap, [cycleId, "archived_at"], null);
       });
+      await this.fetchCycleDetails(workspaceSlug, projectId, cycleId);
     } catch (error) {
       console.error("Failed to restore cycle in cycle store", error);
     }

@@ -5,7 +5,7 @@
 # Django imports
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.contrib.postgres.fields import ArrayField
-from django.db import models
+from django.db import models, transaction
 from django.db.models import (
     Case,
     CharField,
@@ -32,6 +32,7 @@ from rest_framework.response import Response
 from plane.app.permissions import allow_permission, ROLE
 from plane.db.models import Cycle, UserFavorite, Issue, Label, User, Project
 from plane.utils.analytics_plot import burndown_plot
+from plane.utils.cycle_snapshot import capture_cycle_snapshot, public_snapshot
 
 # Module imports
 from .. import BaseAPIView
@@ -301,6 +302,10 @@ class CycleArchiveUnarchiveEndpoint(BaseAPIView):
                     "archived_at",
                 )
             ).order_by("-is_favorite", "-created_at")
+            queryset = list(queryset)
+            for cycle in queryset:
+                cycle["is_editable"] = False
+                cycle["progress_snapshot"] = public_snapshot(cycle["progress_snapshot"])
             return Response(queryset, status=status.HTTP_200_OK)
         else:
             queryset = self.get_queryset().filter(archived_at__isnull=False).filter(pk=pk)
@@ -354,6 +359,27 @@ class CycleArchiveUnarchiveEndpoint(BaseAPIView):
                 .first()
             )
             queryset = queryset.first()
+            if data is None:
+                return Response({"error": "Cycle not found"}, status=status.HTTP_404_NOT_FOUND)
+            data["is_editable"] = False
+            data["progress_snapshot"] = public_snapshot(data["progress_snapshot"])
+            if data["progress_snapshot"]:
+                snapshot = data["progress_snapshot"]
+                data["distribution"] = snapshot.get("distribution", {})
+                data["estimate_distribution"] = snapshot.get("estimate_distribution", {})
+                for field in (
+                    "total_issues",
+                    "completed_issues",
+                    "cancelled_issues",
+                    "started_issues",
+                    "unstarted_issues",
+                    "backlog_issues",
+                    "total_estimate_points",
+                    "completed_estimate_points",
+                ):
+                    if field in snapshot:
+                        data[field] = snapshot[field]
+                return Response(data, status=status.HTTP_200_OK)
 
             estimate_type = Project.objects.filter(
                 workspace__slug=slug,
@@ -584,15 +610,17 @@ class CycleArchiveUnarchiveEndpoint(BaseAPIView):
             return Response(data, status=status.HTTP_200_OK)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    @transaction.atomic
     def post(self, request, slug, project_id, cycle_id):
-        cycle = Cycle.objects.get(pk=cycle_id, project_id=project_id, workspace__slug=slug)
+        cycle = Cycle.objects.select_for_update().get(pk=cycle_id, project_id=project_id, workspace__slug=slug)
 
-        if cycle.end_date >= timezone.now():
+        if cycle.end_date is None or cycle.end_date >= timezone.now():
             return Response(
                 {"error": "Only completed cycles can be archived"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        capture_cycle_snapshot(cycle, [])
         cycle.archived_at = timezone.now()
         cycle.save()
         UserFavorite.objects.filter(

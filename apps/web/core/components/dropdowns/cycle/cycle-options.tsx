@@ -49,17 +49,17 @@ export const CycleOptions = observer(function CycleOptions(props: CycleOptionsPr
   const inputRef = useRef<HTMLInputElement | null>(null);
   // store hooks
   const { workspaceSlug } = useParams();
-  const { getProjectCycleIds, fetchAllCycles, getCycleById } = useCycle();
+  const { getProjectCycleIds, fetchAllCycles, getCycleById, getIsCycleEditable } = useCycle();
   const { isMobile } = usePlatformOS();
 
   useEffect(() => {
     if (isOpen) {
-      onOpen();
+      if (workspaceSlug) void fetchAllCycles(workspaceSlug.toString(), projectId);
       if (!isMobile) {
-        inputRef.current && inputRef.current.focus();
+        inputRef.current?.focus();
       }
     }
-  }, [isOpen, isMobile]);
+  }, [isOpen, isMobile, workspaceSlug, projectId, fetchAllCycles]);
 
   // popper-js init
   const { styles, attributes } = usePopper(referenceElement, popperElement, {
@@ -75,14 +75,9 @@ export const CycleOptions = observer(function CycleOptions(props: CycleOptionsPr
   });
 
   const cycleIds = (getProjectCycleIds(projectId) ?? [])?.filter((cycleId) => {
-    const cycleDetails = getCycleById(cycleId);
     if (currentCycleId && currentCycleId === cycleId) return false;
-    return cycleDetails?.status ? (cycleDetails?.status.toLowerCase() != "completed" ? true : false) : true;
+    return getIsCycleEditable(cycleId);
   });
-
-  const onOpen = () => {
-    if (workspaceSlug && !cycleIds) fetchAllCycles(workspaceSlug.toString(), projectId);
-  };
 
   const searchInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (query !== "" && e.key === "Escape") {

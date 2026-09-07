@@ -10,6 +10,7 @@ from rest_framework import serializers
 from .base import BaseSerializer
 from plane.db.models import Cycle, CycleIssue, User, Project
 from plane.utils.timezone_converter import convert_to_utc
+from plane.utils.cycle_backfill import can_edit_cycle, validate_cycle_dates
 
 
 class CycleCreateSerializer(BaseSerializer):
@@ -73,25 +74,16 @@ class CycleCreateSerializer(BaseSerializer):
             raise serializers.ValidationError("Project not found")
         if not project.cycle_view:
             raise serializers.ValidationError("Cycles are not enabled for this project")
-        if (
-            data.get("start_date", None) is not None
-            and data.get("end_date", None) is not None
-            and data.get("start_date", None) > data.get("end_date", None)
-        ):
-            raise serializers.ValidationError("Start date cannot exceed end date")
+        for field in ("start_date", "end_date"):
+            if data.get(field) is not None:
+                data[field] = convert_to_utc(
+                    date=str(data[field].date()),
+                    project_id=project_id,
+                    is_start_date=field == "start_date",
+                )
+        validate_cycle_dates(self.instance, data)
 
-        if data.get("start_date", None) is not None and data.get("end_date", None) is not None:
-            data["start_date"] = convert_to_utc(
-                date=str(data.get("start_date").date()),
-                project_id=project_id,
-                is_start_date=True,
-            )
-            data["end_date"] = convert_to_utc(
-                date=str(data.get("end_date", None).date()),
-                project_id=project_id,
-            )
-
-        if not data.get("owned_by"):
+        if not self.instance and not data.get("owned_by"):
             data["owned_by"] = self.context["request"].user
 
         return data
@@ -108,7 +100,7 @@ class CycleUpdateSerializer(CycleCreateSerializer):
     class Meta(CycleCreateSerializer.Meta):
         model = Cycle
         fields = CycleCreateSerializer.Meta.fields + [
-            "owned_by",
+            "sort_order",
         ]
 
 
@@ -129,6 +121,18 @@ class CycleSerializer(BaseSerializer):
     total_estimates = serializers.FloatField(read_only=True)
     completed_estimates = serializers.FloatField(read_only=True)
     started_estimates = serializers.FloatField(read_only=True)
+    is_editable = serializers.SerializerMethodField()
+
+    def get_is_editable(self, obj):
+        return obj.is_editable if hasattr(obj, "is_editable") else can_edit_cycle(obj)
+
+    def to_representation(self, instance):
+        from plane.utils.cycle_snapshot import public_snapshot
+
+        data = super().to_representation(instance)
+        if "progress_snapshot" in data:
+            data["progress_snapshot"] = public_snapshot(data["progress_snapshot"])
+        return data
 
     class Meta:
         model = Cycle
@@ -162,7 +166,7 @@ class CycleIssueSerializer(BaseSerializer):
         read_only_fields = ["workspace", "project", "cycle"]
 
 
-class CycleLiteSerializer(BaseSerializer):
+class CycleLiteSerializer(CycleSerializer):
     """
     Lightweight cycle serializer for minimal data transfer.
 

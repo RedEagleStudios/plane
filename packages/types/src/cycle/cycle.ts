@@ -70,12 +70,12 @@ export type TProgressSnapshot = {
   started_issues: number;
   unstarted_issues: number;
   cancelled_issues: number;
-  total_estimate_points?: number;
-  completed_estimate_points?: number;
-  backlog_estimate_points: number;
-  started_estimate_points: number;
-  unstarted_estimate_points: number;
-  cancelled_estimate_points: number;
+  total_estimate_points?: number | null;
+  completed_estimate_points?: number | null;
+  backlog_estimate_points: number | null;
+  started_estimate_points: number | null;
+  unstarted_estimate_points: number | null;
+  cancelled_estimate_points: number | null;
   distribution?: TCycleDistribution;
   estimate_distribution?: TCycleEstimateDistribution;
 };
@@ -93,6 +93,7 @@ export interface ICycle extends TProgressSnapshot {
   end_date: string | null;
   id: string;
   is_favorite?: boolean;
+  is_editable: boolean;
   name: string;
   owned_by_id: string;
   project_id: string;

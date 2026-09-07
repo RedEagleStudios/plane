@@ -8,6 +8,7 @@ import json
 
 # Django imports
 from django.core import serializers
+from django.db import transaction
 from django.db.models import F, Func, OuterRef, Q, Subquery
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -35,6 +36,8 @@ from plane.app.permissions import allow_permission, ROLE
 from plane.utils.host import base_host
 from plane.utils.filters import ComplexFilterBackend
 from plane.utils.filters import IssueFilterSet
+from plane.utils.cycle_backfill import BACKFILL_LOCKED_MESSAGE, can_edit_cycle, prepare_cycle_membership_change
+from plane.utils.cycle_snapshot import prepare_cycle_snapshot, refresh_cycle_snapshot
 
 
 class CycleIssueViewSet(BaseViewSet):
@@ -221,19 +224,18 @@ class CycleIssueViewSet(BaseViewSet):
             )
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    @transaction.atomic
     def create(self, request, slug, project_id, cycle_id):
         issues = request.data.get("issues", [])
 
         if not issues:
             return Response({"error": "Issues are required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        reporting_cycles = prepare_cycle_membership_change(slug, project_id, cycle_id, issues)
         cycle = Cycle.objects.get(workspace__slug=slug, project_id=project_id, pk=cycle_id)
 
-        if cycle.end_date is not None and cycle.end_date < timezone.now():
-            return Response(
-                {"error": "The Cycle has already been completed so no new issues can be added"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if not can_edit_cycle(cycle):
+            return Response({"error": BACKFILL_LOCKED_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
 
         # Get all CycleIssues already created
         # Scope to workspace+project to prevent cross-tenant IDOR: without this
@@ -297,6 +299,8 @@ class CycleIssueViewSet(BaseViewSet):
 
         # Update the cycle issues
         CycleIssue.objects.bulk_update(updated_records, ["cycle_id"], batch_size=100)
+        for reporting_cycle in reporting_cycles:
+            refresh_cycle_snapshot(reporting_cycle)
         # Capture Issue Activity
         issue_activity.delay(
             type="cycle.activity.created",
@@ -317,7 +321,12 @@ class CycleIssueViewSet(BaseViewSet):
         return Response({"message": "success"}, status=status.HTTP_201_CREATED)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER])
+    @transaction.atomic
     def destroy(self, request, slug, project_id, cycle_id, issue_id):
+        cycle = Cycle.objects.select_for_update().get(workspace__slug=slug, project_id=project_id, pk=cycle_id)
+        if not can_edit_cycle(cycle):
+            return Response({"error": BACKFILL_LOCKED_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
+        prepare_cycle_snapshot(cycle)
         cycle_issue = CycleIssue.objects.filter(
             issue_id=issue_id,
             workspace__slug=slug,
@@ -341,4 +350,5 @@ class CycleIssueViewSet(BaseViewSet):
             origin=base_host(request=request, is_app=True),
         )
         cycle_issue.delete()
+        refresh_cycle_snapshot(cycle)
         return Response(status=status.HTTP_204_NO_CONTENT)

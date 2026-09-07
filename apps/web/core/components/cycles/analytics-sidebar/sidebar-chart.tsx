@@ -38,6 +38,7 @@ export const SidebarChart = observer(function SidebarChart(props: ProgressChartP
   const totalEstimatePoints = cycleDetails?.total_estimate_points || 0;
   const totalIssues = cycleDetails?.total_issues || 0;
   const estimateType = getEstimateTypeByCycleId(cycleId);
+  const hasKnownScope = estimateType !== "points" || cycleDetails?.total_estimate_points != null;
 
   const chartDistributionData =
     estimateType === "points" ? cycleDetails?.estimate_distribution : cycleDetails?.distribution || undefined;
@@ -70,7 +71,9 @@ export const SidebarChart = observer(function SidebarChart(props: ProgressChartP
       </div>
       <div className="py-4">
         <div>
-          {cycleStartDate && cycleEndDate && completionChartDistributionData ? (
+          {!hasKnownScope ? (
+            <span className="text-secondary">—</span>
+          ) : cycleStartDate && cycleEndDate && completionChartDistributionData ? (
             <Fragment>
               <ProgressChart
                 distribution={completionChartDistributionData}

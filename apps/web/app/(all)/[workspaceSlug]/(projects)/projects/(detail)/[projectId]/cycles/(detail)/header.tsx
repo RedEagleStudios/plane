@@ -106,7 +106,7 @@ export const CycleIssuesHeader = observer(function CycleIssuesHeader() {
 
   // derived values
   const cycleDetails = cycleId ? getCycleById(cycleId.toString()) : undefined;
-  const isCompletedCycle = cycleDetails?.status?.toLocaleLowerCase() === "completed";
+  const canEditCycle = cycleDetails?.is_editable === true && !cycleDetails.archived_at;
   const canUserCreateIssue = allowPermissions(
     [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
     EUserPermissionsLevel.PROJECT
@@ -239,7 +239,7 @@ export const CycleIssuesHeader = observer(function CycleIssuesHeader() {
                     <ChartNoAxesColumn className="size-3.5" />
                   </span>
                 </Button>
-                {!isCompletedCycle && (
+                {canEditCycle && (
                   <Button
                     variant="primary"
                     size="lg"

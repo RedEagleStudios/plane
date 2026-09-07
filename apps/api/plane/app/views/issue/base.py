@@ -76,6 +76,7 @@ from plane.utils.paginator import GroupedOffsetPaginator, SubGroupedOffsetPagina
 from plane.utils.timezone_converter import user_timezone_converter
 
 from .. import BaseAPIView, BaseViewSet
+from plane.utils.cycle_backfill import cycle_issue_mutation, cycle_issues_mutation
 
 
 class IssueListEndpoint(BaseAPIView):
@@ -779,7 +780,8 @@ class IssueViewSet(BaseViewSet):
     def destroy(self, request, slug, project_id, pk=None):
         issue = Issue.objects.get(workspace__slug=slug, project_id=project_id, pk=pk)
 
-        issue.delete()
+        with cycle_issue_mutation(issue):
+            issue.delete()
         # delete the issue from recent visits
         UserRecentVisit.objects.filter(
             project_id=project_id,
@@ -834,14 +836,10 @@ class BulkDeleteIssuesEndpoint(BaseAPIView):
 
         total_issues = len(issues)
 
-        # First, delete all related cycle issues
-        CycleIssue.objects.filter(issue__in=issues).delete()
-
-        # Then, delete all related module issues
-        ModuleIssue.objects.filter(issue__in=issues).delete()
-
-        # Finally, delete the issues themselves
-        issues.delete()
+        with cycle_issues_mutation(issues):
+            CycleIssue.objects.filter(issue__in=issues).delete()
+            ModuleIssue.objects.filter(issue__in=issues).delete()
+            issues.delete()
 
         return Response(
             {"message": f"{total_issues} issues were deleted"},
@@ -1149,9 +1147,9 @@ class IssueDetailEndpoint(BaseAPIView):
             order_by=order_by_param,
             queryset=issue,
             total_count_queryset=total_issue_queryset,
-            on_results=lambda issue: IssueListDetailSerializer(
-                issue, many=True, fields=self.fields, expand=self.expand
-            ).data,
+            on_results=lambda issue: (
+                IssueListDetailSerializer(issue, many=True, fields=self.fields, expand=self.expand).data
+            ),
         )
 
 

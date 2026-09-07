@@ -5,7 +5,6 @@
  */
 
 import { useState } from "react";
-import { isEmpty } from "lodash-es";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 // plane imports
@@ -34,15 +33,13 @@ export const CycleEmptyState = observer(function CycleEmptyState() {
   // plane hooks
   const { t } = useTranslation();
   // store hooks
-  const { getCycleById } = useCycle();
+  const { getIsCycleEditable } = useCycle();
   const { issues } = useIssues(EIssuesStoreType.CYCLE);
   const { toggleCreateIssueModal } = useCommandPalette();
   const { allowPermissions } = useUserPermissions();
   // derived values
   const cycleWorkItemFilter = useWorkItemFilterInstance(EIssuesStoreType.CYCLE, cycleId);
-  const cycleDetails = cycleId ? getCycleById(cycleId) : undefined;
-  const isCompletedCycleSnapshotAvailable = !isEmpty(cycleDetails?.progress_snapshot ?? {});
-  const isCompletedAndEmpty = isCompletedCycleSnapshotAvailable || cycleDetails?.status?.toLowerCase() === "completed";
+  const isCompletedAndEmpty = !cycleId || !getIsCycleEditable(cycleId);
   const canPerformEmptyStateActions = allowPermissions(
     [EUserProjectRoles.ADMIN, EUserProjectRoles.MEMBER],
     EUserPermissionsLevel.PROJECT
