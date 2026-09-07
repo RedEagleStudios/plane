@@ -174,9 +174,13 @@ export class ProjectViewIssuesFilter extends IssueFilterHelperStore implements I
   });
 
   fetchFilters = async (workspaceSlug: string, projectId: string, viewId: string) => {
+    // Saved view filters initialize this viewing session; revalidation must not replace local edits.
+    if (this.filters[viewId]) return;
+
     try {
       const viewDetails = await this.issueFilterService.getViewDetails(workspaceSlug, projectId, viewId);
-      this.mutateFilters(workspaceSlug, viewId, viewDetails);
+      // Another request or an explicit view update may have initialized the filters while fetching.
+      if (!this.filters[viewId]) this.mutateFilters(workspaceSlug, viewId, viewDetails);
     } catch (error) {
       console.log("error while fetching project view filters", error);
       throw error;
@@ -326,7 +330,7 @@ export class ProjectViewIssuesFilter extends IssueFilterHelperStore implements I
           break;
       }
     } catch (error) {
-      if (viewId) this.fetchFilters(workspaceSlug, projectId, viewId);
+      if (viewId) this.resetFilters(workspaceSlug, viewId);
       throw error;
     }
   };

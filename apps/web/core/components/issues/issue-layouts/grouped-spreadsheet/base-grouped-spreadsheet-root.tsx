@@ -59,7 +59,7 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
   const showEmptyGroups = displayFilters?.show_empty_groups ?? false;
   const collapsedGroups =
     issuesFilter.issueFilters?.kanbanFilters ?? ({ group_by: [], sub_group_by: [] } as TIssueKanbanFilters);
-  const filterEntityId = viewId ?? projectId?.toString();
+  const filterProjectId = projectId?.toString();
   const { enableInlineEditing, enableQuickAdd, enableIssueCreation } = issues.viewFlags ?? {};
 
   const isEditingAllowed = allowPermissions(
@@ -68,13 +68,13 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
   );
 
   useEffect(() => {
-    if (!filterEntityId) return;
+    if (!filterProjectId) return;
     if (!displayFilters?.group_by) {
-      updateFilters(filterEntityId, EIssueFilterType.DISPLAY_FILTERS, { group_by: "cycle" });
+      updateFilters(filterProjectId, EIssueFilterType.DISPLAY_FILTERS, { group_by: "cycle" });
       return;
     }
     fetchIssues("init-loader", { canGroup: true, perPageCount: GROUPED_TABLE_PAGE_SIZE }, viewId);
-  }, [displayFilters?.group_by, fetchIssues, filterEntityId, updateFilters, viewId]);
+  }, [displayFilters?.group_by, fetchIssues, filterProjectId, updateFilters, viewId]);
 
   const canEditProperties = useCallback(
     (currentProjectId: string | undefined) => {
@@ -89,20 +89,20 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
 
   const handleDisplayFiltersUpdate = useCallback(
     (updatedDisplayFilter: Partial<IIssueDisplayFilterOptions>) => {
-      if (!filterEntityId) return;
-      updateFilters(filterEntityId, EIssueFilterType.DISPLAY_FILTERS, updatedDisplayFilter);
+      if (!filterProjectId) return;
+      updateFilters(filterProjectId, EIssueFilterType.DISPLAY_FILTERS, updatedDisplayFilter);
     },
-    [filterEntityId, updateFilters]
+    [filterProjectId, updateFilters]
   );
 
   const handleCollapsedGroups = useCallback(
     (groupId: string) => {
-      if (!filterEntityId || !workspaceSlug) return;
+      if (!filterProjectId || !workspaceSlug) return;
       const currentCollapsedGroups = issuesFilter.issueFilters?.kanbanFilters?.group_by ?? [];
       const group_by = currentCollapsedGroups.includes(groupId)
         ? currentCollapsedGroups.filter((value) => value !== groupId)
         : [...currentCollapsedGroups, groupId];
-      updateFilters(filterEntityId, EIssueFilterType.KANBAN_FILTERS, {
+      updateFilters(filterProjectId, EIssueFilterType.KANBAN_FILTERS, {
         group_by,
         sub_group_by: collapsedGroups.sub_group_by,
       });
@@ -110,7 +110,7 @@ export const BaseGroupedSpreadsheetRoot = observer(function BaseGroupedSpreadshe
     [
       collapsedGroups.sub_group_by,
       issuesFilter.issueFilters?.kanbanFilters?.group_by,
-      filterEntityId,
+      filterProjectId,
       updateFilters,
       workspaceSlug,
     ]

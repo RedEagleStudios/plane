@@ -15,7 +15,6 @@ import { EIssuesStoreType, EIssueLayoutTypes } from "@plane/types";
 import { ProjectLevelWorkItemFiltersHOC } from "@/components/work-item-filters/filters-hoc/project-level";
 import { WorkItemFiltersRow } from "@/components/work-item-filters/filters-row";
 import { useIssues } from "@/hooks/store/use-issues";
-import { useProjectView } from "@/hooks/store/use-project-view";
 import { IssuesStoreContext } from "@/hooks/use-issue-layout-store";
 // local imports
 import { IssuePeekOverview } from "../../peek-overview";
@@ -53,19 +52,9 @@ export const ProjectViewLayoutRoot = observer(function ProjectViewLayoutRoot() {
   const viewId = routerViewId ? routerViewId?.toString() : undefined;
   // hooks
   const { issuesFilter } = useIssues(EIssuesStoreType.PROJECT_VIEW);
-  const { getViewById } = useProjectView();
   // derived values
-  const projectView = viewId ? getViewById(viewId) : undefined;
   const workItemFilters = viewId ? issuesFilter?.getIssueFilters(viewId) : undefined;
   const activeLayout = workItemFilters?.displayFilters?.layout;
-  const initialWorkItemFilters = projectView
-    ? {
-        displayFilters: workItemFilters?.displayFilters,
-        displayProperties: workItemFilters?.displayProperties,
-        kanbanFilters: workItemFilters?.kanbanFilters,
-        richFilters: projectView.rich_filters,
-      }
-    : undefined;
 
   useSWR(
     workspaceSlug && projectId && viewId ? `PROJECT_VIEW_ISSUES_${workspaceSlug}_${projectId}_${viewId}` : null,
@@ -97,7 +86,7 @@ export const ProjectViewLayoutRoot = observer(function ProjectViewLayoutRoot() {
         entityId={viewId}
         entityType={EIssuesStoreType.PROJECT_VIEW}
         filtersToShowByLayout={ISSUE_DISPLAY_FILTERS_BY_PAGE.issues.filters}
-        initialWorkItemFilters={initialWorkItemFilters}
+        initialWorkItemFilters={workItemFilters}
         updateFilters={issuesFilter?.updateFilterExpression.bind(issuesFilter, workspaceSlug, projectId, viewId)}
         projectId={projectId}
         workspaceSlug={workspaceSlug}
