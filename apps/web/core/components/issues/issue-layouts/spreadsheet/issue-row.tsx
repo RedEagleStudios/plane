@@ -104,10 +104,15 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
   // store hooks
   const { subIssues: subIssuesStore } = useIssueDetail(isEpic ? EIssueServiceType.EPICS : EIssueServiceType.ISSUES);
   const { issueMap } = useIssues();
+  const { issues, issuesFilter } = useIssuesStore();
 
   // derived values
   const issue = issueMap[issueId];
-  const subIssues = subIssuesStore.subIssuesByIssueId(issueId);
+  const subIssueIds = subIssuesStore.subIssuesByIssueId(issueId);
+  const subIssues =
+    isExpanded && !isEpic && subIssueIds && subIssueIds.length > 1 && "issuesSortWithOrderBy" in issues
+      ? issues.issuesSortWithOrderBy(subIssueIds, issuesFilter.issueFilters?.displayFilters?.order_by ?? "-created_at")
+      : subIssueIds;
   const isIssueSelected = selectionHelpers.getIsEntitySelected(issueId);
   const isIssueActive = selectionHelpers.getIsEntityActive(issueId);
 
