@@ -130,6 +130,7 @@ export const DisplayFiltersSelection = observer(function DisplayFiltersSelection
             selectedExtraOptions={{
               show_empty_groups: displayFilters?.show_empty_groups ?? true,
               sub_issue: displayFilters?.sub_issue ?? true,
+              wrap_titles: displayFilters?.wrap_titles ?? false,
             }}
             handleUpdate={(key, val) =>
               handleDisplayFiltersUpdate({

@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Alt iş öğelerini göster",
+        "wrap_titles": "Başlıkları birden fazla satırda göster",
         "show_empty_groups": "Boş grupları göster"
       }
     },

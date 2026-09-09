@@ -5,6 +5,7 @@
  */
 
 import { useRef } from "react";
+import type { ReactNode } from "react";
 //types
 import { observer } from "mobx-react";
 import type { IIssueDisplayFilterOptions, IIssueDisplayProperties } from "@plane/types";
@@ -20,9 +21,17 @@ interface Props {
   displayFilters: IIssueDisplayFilterOptions;
   handleDisplayFilterUpdate: (data: Partial<IIssueDisplayFilterOptions>) => void;
   isEpic?: boolean;
+  resizeHandle?: ReactNode;
 }
 export const SpreadsheetHeaderColumn = observer(function SpreadsheetHeaderColumn(props: Props) {
-  const { displayProperties, displayFilters, property, handleDisplayFilterUpdate, isEpic = false } = props;
+  const {
+    displayProperties,
+    displayFilters,
+    property,
+    handleDisplayFilterUpdate,
+    isEpic = false,
+    resizeHandle,
+  } = props;
 
   //hooks
   const tableHeaderCellRef = useRef<HTMLTableCellElement | null>(null);
@@ -36,7 +45,7 @@ export const SpreadsheetHeaderColumn = observer(function SpreadsheetHeaderColumn
       shouldRenderProperty={() => shouldRenderProperty}
     >
       <th
-        className="h-11 min-w-36 items-center border border-t-0 border-b-0 border-subtle bg-layer-1 py-1 text-13 font-medium"
+        className="relative h-11 min-w-36 items-center border border-t-0 border-b-0 border-subtle bg-layer-1 py-1 text-13 font-medium"
         ref={tableHeaderCellRef}
         tabIndex={0}
       >
@@ -49,6 +58,7 @@ export const SpreadsheetHeaderColumn = observer(function SpreadsheetHeaderColumn
           }}
           isEpic={isEpic}
         />
+        {resizeHandle}
       </th>
     </WithDisplayPropertiesHOC>
   );

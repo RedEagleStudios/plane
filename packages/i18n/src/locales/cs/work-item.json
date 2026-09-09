@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Zobrazit podřízené položky",
+        "wrap_titles": "Zalamovat názvy",
         "show_empty_groups": "Zobrazit prázdné skupiny"
       }
     },

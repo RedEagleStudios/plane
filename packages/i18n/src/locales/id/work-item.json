@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Tampilkan sub-item kerja",
+        "wrap_titles": "Tampilkan judul dalam beberapa baris",
         "show_empty_groups": "Tampilkan grup kosong"
       }
     },

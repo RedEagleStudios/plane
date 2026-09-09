@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "显示子工作项",
+        "wrap_titles": "标题自动换行",
         "show_empty_groups": "显示空组"
       }
     },

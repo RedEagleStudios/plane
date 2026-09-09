@@ -31,9 +31,11 @@ import { useBulkOperationStatus } from "@/hooks/use-bulk-operation-status";
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
 import { useIssuesStore } from "@/hooks/use-issue-layout-store";
 import { useTableKeyboardNavigation } from "@/hooks/use-table-keyboard-navigation";
+import { shouldRenderColumn } from "@/helpers/issue-filter.helper";
 import { usePlatformOS } from "@/hooks/use-platform-os";
 import type { TRenderQuickActions } from "../list/list-view-types";
-import { getDisplayPropertiesCount, getGroupByColumns } from "../utils";
+import { getGroupByColumns } from "../utils";
+import { ColumnResizeHandle } from "../spreadsheet/column-resize-handle";
 import { SpreadsheetIssueRow } from "../spreadsheet/issue-row";
 import { SpreadsheetHeader } from "../spreadsheet/spreadsheet-header";
 import {
@@ -108,6 +110,10 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const { isMobile } = usePlatformOS();
   const [mobileExpansionOverrides, setMobileExpansionOverrides] = useState<Record<string, boolean>>({});
   const [expandedIssueRowKeys, setExpandedIssueRowKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const [columnWidths, setColumnWidths] = useState<Partial<Record<"title" | keyof IIssueDisplayProperties, number>>>(
+    {}
+  );
+  const wrapTitle = displayFilters.wrap_titles ?? false;
 
   const groups = useMemo(
     () =>
@@ -179,9 +185,14 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
     return true;
   });
 
-  const ignoreFieldsForCounting: (keyof IIssueDisplayProperties)[] = ["key"];
-  if (!isEstimateEnabled) ignoreFieldsForCounting.push("estimate");
-  const columnCount = getDisplayPropertiesCount(displayProperties, ignoreFieldsForCounting) + 1;
+  const visibleColumns = spreadsheetColumnsList.filter(
+    (property) => displayProperties[property] && shouldRenderColumn(property)
+  );
+  const columnCount = visibleColumns.length + 1;
+  const titleWidth = columnWidths.title ?? 480;
+  const tableWidth =
+    titleWidth + visibleColumns.reduce((total, property) => total + (columnWidths[property] ?? 180), 0);
+  const visibleColumnKey = `${!!displayProperties.key}:${visibleColumns.join(",")}`;
 
   const rowVirtualizer = useVirtualizer({
     count: virtualRows.length,
@@ -193,6 +204,14 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
     overscan: GROUPED_TABLE_OVERSCAN,
     getItemKey: (index) => virtualRows[index]?.key ?? index,
   });
+  // Each measured tbody includes the parent and all expanded descendants.
+  // Invalidate offscreen heights as well when wrapping or column widths change.
+  useEffect(() => {
+    rowVirtualizer.measure();
+    containerRef.current
+      ?.querySelectorAll<HTMLTableSectionElement>("tbody[data-index]")
+      .forEach(rowVirtualizer.measureElement);
+  }, [rowVirtualizer, wrapTitle, columnWidths, visibleColumnKey]);
   const virtualItems = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
   const paddingBottom =
@@ -254,7 +273,17 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
               className="vertical-scrollbar horizontal-scrollbar scrollbar-lg h-full w-full touch-pan-x touch-pan-y overflow-auto"
               style={{ overflowAnchor: "none" }}
             >
-              <table className="w-full min-w-max bg-surface-1" onKeyDown={handleKeyboardNavigation}>
+              <table
+                className="table-fixed bg-surface-1 [&_td]:overflow-hidden"
+                style={{ width: tableWidth }}
+                onKeyDown={handleKeyboardNavigation}
+              >
+                <colgroup>
+                  <col style={{ width: titleWidth }} />
+                  {visibleColumns.map((property) => (
+                    <col key={property} style={{ width: columnWidths[property] ?? 180 }} />
+                  ))}
+                </colgroup>
                 <SpreadsheetHeader
                   displayProperties={displayProperties}
                   displayFilters={displayFilters}
@@ -263,6 +292,18 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                   isEstimateEnabled={isEstimateEnabled}
                   spreadsheetColumnsList={spreadsheetColumnsList}
                   selectionHelpers={selectionHelpers}
+                  renderResizeHandle={(column) => (
+                    <ColumnResizeHandle
+                      label={column === "title" ? "Work items" : column.replaceAll("_", " ")}
+                      width={columnWidths[column] ?? (column === "title" ? 480 : 180)}
+                      minWidth={column === "title" ? 280 : 144}
+                      onResize={(width) =>
+                        setColumnWidths((current) =>
+                          current[column] === width ? current : { ...current, [column]: width }
+                        )
+                      }
+                    />
+                  )}
                 />
                 <tbody>
                   {paddingTop > 0 && (
@@ -270,14 +311,15 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                       <td colSpan={columnCount} style={{ height: `${paddingTop}px` }} />
                     </tr>
                   )}
-                  {virtualItems.map((virtualItem) => {
-                    const row = virtualRows[virtualItem.index];
-                    if (!row) return null;
+                </tbody>
+                {virtualItems.map((virtualItem) => {
+                  const row = virtualRows[virtualItem.index];
+                  if (!row) return null;
 
-                    if (row.type === "issue") {
-                      return (
+                  if (row.type === "issue") {
+                    return (
+                      <tbody key={row.key} data-index={virtualItem.index} ref={rowVirtualizer.measureElement}>
                         <SpreadsheetIssueRow
-                          key={row.key}
                           issueId={row.issueId}
                           displayProperties={displayProperties}
                           quickActions={quickActions}
@@ -291,16 +333,20 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                           spreadsheetColumnsList={spreadsheetColumnsList}
                           selectionHelpers={selectionHelpers}
                           forceRender
+                          wrapTitle={wrapTitle}
+                          fixedColumns
                           expansionKey={row.key}
                           expandedIssueKeys={expandedIssueRowKeys}
                           onIssueExpansionChange={handleIssueExpansionChange}
                         />
-                      );
-                    }
+                      </tbody>
+                    );
+                  }
 
-                    if (row.type === "load-more") {
-                      return (
-                        <tr key={row.key} aria-live="polite">
+                  if (row.type === "load-more") {
+                    return (
+                      <tbody key={row.key} data-index={virtualItem.index} ref={rowVirtualizer.measureElement}>
+                        <tr aria-live="polite">
                           <td
                             colSpan={columnCount}
                             className="border-b border-subtle align-top text-12 text-tertiary"
@@ -324,30 +370,30 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                             </div>
                           </td>
                         </tr>
-                      );
-                    }
-
-                    const group = groupById.get(row.groupId);
-                    const virtualGroup = virtualGroupById.get(row.groupId);
-                    if (!group || !virtualGroup) return null;
-
-                    const cycle = groupBy === "cycle" && group.id !== "None" ? getCycleById(group.id) : null;
-                    const estimateTotal = sumNumericEstimateValues(
-                      virtualGroup.issueIds.map((issueId) => {
-                        const estimatePointId = issueMap[issueId]?.estimate_point;
-                        return estimatePointId ? estimate.estimatePointById?.(estimatePointId)?.value : null;
-                      })
+                      </tbody>
                     );
-                    const title = groupedTableGroupTitle(groupBy, group.id, group.name);
-                    const startDate = cycle?.start_date
-                      ? GROUP_DATE_FORMATTER.format(new Date(cycle.start_date))
-                      : null;
-                    const endDate = cycle?.end_date ? GROUP_DATE_FORMATTER.format(new Date(cycle.end_date)) : null;
-                    const cycleStatus = cycle?.status?.toLowerCase();
-                    const canLoadMoreIssues = virtualGroup.issueIds.length < virtualGroup.totalCount;
+                  }
 
-                    return (
-                      <tr key={row.key} className="border-b-[0.5px] border-subtle bg-layer-2">
+                  const group = groupById.get(row.groupId);
+                  const virtualGroup = virtualGroupById.get(row.groupId);
+                  if (!group || !virtualGroup) return null;
+
+                  const cycle = groupBy === "cycle" && group.id !== "None" ? getCycleById(group.id) : null;
+                  const estimateTotal = sumNumericEstimateValues(
+                    virtualGroup.issueIds.map((issueId) => {
+                      const estimatePointId = issueMap[issueId]?.estimate_point;
+                      return estimatePointId ? estimate.estimatePointById?.(estimatePointId)?.value : null;
+                    })
+                  );
+                  const title = groupedTableGroupTitle(groupBy, group.id, group.name);
+                  const startDate = cycle?.start_date ? GROUP_DATE_FORMATTER.format(new Date(cycle.start_date)) : null;
+                  const endDate = cycle?.end_date ? GROUP_DATE_FORMATTER.format(new Date(cycle.end_date)) : null;
+                  const cycleStatus = cycle?.status?.toLowerCase();
+                  const canLoadMoreIssues = virtualGroup.issueIds.length < virtualGroup.totalCount;
+
+                  return (
+                    <tbody key={row.key} data-index={virtualItem.index} ref={rowVirtualizer.measureElement}>
+                      <tr className="border-b-[0.5px] border-subtle bg-layer-2">
                         <td colSpan={columnCount} className="h-11 px-page-x">
                           <button
                             type="button"
@@ -382,8 +428,10 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                           </button>
                         </td>
                       </tr>
-                    );
-                  })}
+                    </tbody>
+                  );
+                })}
+                <tbody>
                   {paddingBottom > 0 && (
                     <tr aria-hidden="true">
                       <td colSpan={columnCount} style={{ height: `${paddingBottom}px` }} />

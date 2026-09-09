@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "サブ作業項目を表示",
+        "wrap_titles": "タイトルを折り返す",
         "show_empty_groups": "空のグループを表示"
       }
     },

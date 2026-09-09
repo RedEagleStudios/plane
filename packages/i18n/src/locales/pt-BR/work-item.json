@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Mostrar sub-itens de trabalho",
+        "wrap_titles": "Quebrar títulos em várias linhas",
         "show_empty_groups": "Mostrar grupos vazios"
       }
     },

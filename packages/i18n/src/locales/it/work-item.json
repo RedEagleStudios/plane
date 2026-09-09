@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Mostra sotto-elementi di lavoro",
+        "wrap_titles": "Mandare a capo i titoli",
         "show_empty_groups": "Mostra gruppi vuoti"
       }
     },

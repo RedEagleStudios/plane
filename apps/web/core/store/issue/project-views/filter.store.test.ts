@@ -124,6 +124,33 @@ describe("ProjectViewIssuesFilter viewing session", () => {
     expectLocalFilters(store);
   });
 
+  it("preserves title wrapping edits until reset without changing the work item query", async () => {
+    const { store, savedView } = createStore();
+    savedView.display_filters = {
+      layout: EIssueLayoutTypes.GROUPED_SPREADSHEET,
+      group_by: "cycle",
+      wrap_titles: true,
+    };
+    await store.fetchFilters("workspace", "project-id", "view-id");
+    expect(store.getIssueFilters("view-id")?.displayFilters?.wrap_titles).toBe(true);
+    const query = store.getAppliedFilters("view-id");
+
+    await store.updateFilters(
+      "workspace",
+      "project-id",
+      EIssueFilterType.DISPLAY_FILTERS,
+      { wrap_titles: false },
+      "view-id"
+    );
+    await store.fetchFilters("workspace", "project-id", "view-id");
+    expect(store.getIssueFilters("view-id")?.displayFilters?.wrap_titles).toBe(false);
+    expect(store.getAppliedFilters("view-id")).toEqual(query);
+
+    store.resetFilters("workspace", "view-id");
+    await store.fetchFilters("workspace", "project-id", "view-id");
+    expect(store.getIssueFilters("view-id")?.displayFilters?.wrap_titles).toBe(true);
+  });
+
   it("restores saved defaults on reset and starts a fresh page store without unsaved edits", async () => {
     const { store } = createStore();
     await store.fetchFilters("workspace", "project-id", "view-id");

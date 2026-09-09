@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "하위 작업 항목 표시",
+        "wrap_titles": "제목 줄 바꿈",
         "show_empty_groups": "빈 그룹 표시"
       }
     },

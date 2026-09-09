@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Untergeordnete Elemente anzeigen",
+        "wrap_titles": "Titel umbrechen",
         "show_empty_groups": "Leere Gruppen anzeigen"
       }
     },

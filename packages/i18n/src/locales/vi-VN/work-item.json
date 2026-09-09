@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Hiển thị mục công việc con",
+        "wrap_titles": "Hiển thị tiêu đề trên nhiều dòng",
         "show_empty_groups": "Hiển thị nhóm trống"
       }
     },

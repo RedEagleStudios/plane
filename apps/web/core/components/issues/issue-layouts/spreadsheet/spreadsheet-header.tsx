@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import type { ReactNode } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 // constants
@@ -26,6 +27,7 @@ interface Props {
   spreadsheetColumnsList: (keyof IIssueDisplayProperties)[];
   selectionHelpers: TSelectionHelper;
   isEpic?: boolean;
+  renderResizeHandle?: (column: "title" | keyof IIssueDisplayProperties) => ReactNode;
 }
 
 export const SpreadsheetHeader = observer(function SpreadsheetHeader(props: Props) {
@@ -38,6 +40,7 @@ export const SpreadsheetHeader = observer(function SpreadsheetHeader(props: Prop
     spreadsheetColumnsList,
     selectionHelpers,
     isEpic = false,
+    renderResizeHandle,
   } = props;
   // router
   const { projectId } = useParams();
@@ -51,12 +54,17 @@ export const SpreadsheetHeader = observer(function SpreadsheetHeader(props: Prop
       <tr>
         {/* Single header column containing both identifier and workitem */}
         <th
-          className="group/list-header left-0 z-[15] h-11 min-w-60 border-r-[0.5px] border-subtle bg-layer-1 text-13 font-medium md:sticky"
+          className="group/list-header relative left-0 z-[15] h-11 min-w-60 border-r-[0.5px] border-subtle bg-layer-1 text-13 font-medium md:sticky"
           tabIndex={-1}
         >
           <div className="flex h-full w-full items-center gap-2 px-page-x">
             {/* Workitem header section */}
-            <div className="flex h-full min-w-80 flex-grow items-center gap-1 py-2.5">
+            <div
+              className={cn(
+                "flex h-full flex-grow items-center gap-1 py-2.5",
+                renderResizeHandle ? "min-w-0" : "min-w-80"
+              )}
+            >
               {canSelectIssues && (
                 <div className="mr-1 flex w-3.5 flex-shrink-0 items-center">
                   <MultipleSelectGroupAction
@@ -74,6 +82,7 @@ export const SpreadsheetHeader = observer(function SpreadsheetHeader(props: Prop
               <span className="text-13 font-medium">{`${isEpic ? "Epics" : "Work items"}`}</span>
             </div>
           </div>
+          {renderResizeHandle?.("title")}
         </th>
 
         {spreadsheetColumnsList.map((property) => (
@@ -85,6 +94,7 @@ export const SpreadsheetHeader = observer(function SpreadsheetHeader(props: Prop
             handleDisplayFilterUpdate={handleDisplayFilterUpdate}
             isEstimateEnabled={isEstimateEnabled}
             isEpic={isEpic}
+            resizeHandle={renderResizeHandle?.(property)}
           />
         ))}
       </tr>

@@ -62,6 +62,8 @@ interface Props {
   expandedIssueKeys?: ReadonlySet<string>;
   onIssueExpansionChange?: (expansionKey: string, isExpanded: boolean) => void;
   isEpic?: boolean;
+  wrapTitle?: boolean;
+  fixedColumns?: boolean;
 }
 
 export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: Props) {
@@ -85,6 +87,8 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
     expandedIssueKeys,
     onIssueExpansionChange,
     isEpic = false,
+    wrapTitle = false,
+    fixedColumns = false,
   } = props;
   // states
   const [isLocallyExpanded, setIsLocallyExpanded] = useState(false);
@@ -156,6 +160,8 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
           spreadsheetColumnsList={spreadsheetColumnsList}
           selectionHelpers={selectionHelpers}
           isEpic={isEpic}
+          wrapTitle={wrapTitle}
+          fixedColumns={fixedColumns}
         />
       </RenderIfVisible>
 
@@ -181,6 +187,9 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
             expansionKey={`${resolvedExpansionKey}:${subIssueId}`}
             expandedIssueKeys={expandedIssueKeys}
             onIssueExpansionChange={onIssueExpansionChange}
+            wrapTitle={wrapTitle}
+            fixedColumns={fixedColumns}
+            forceRender={forceRender}
           />
         ))}
     </>
@@ -203,6 +212,8 @@ interface IssueRowDetailsProps {
   spacingLeft?: number;
   selectionHelpers: TSelectionHelper;
   isEpic?: boolean;
+  wrapTitle?: boolean;
+  fixedColumns?: boolean;
 }
 
 const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetailsProps) {
@@ -222,6 +233,8 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     spacingLeft = 6,
     selectionHelpers,
     isEpic = false,
+    wrapTitle = false,
+    fixedColumns = false,
   } = props;
   // states
   const [isMenuActive, setIsMenuActive] = useState(false);
@@ -355,7 +368,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
         id={`issue-${issueId}`}
         ref={cellRef}
         tabIndex={0}
-        className="group/list-block relative left-0 z-10 max-w-lg bg-surface-1 md:sticky"
+        className={cn("group/list-block relative left-0 z-10 bg-surface-1 md:sticky", !fixedColumns && "max-w-lg")}
       >
         <ControlLink
           href={workItemLink}
@@ -368,6 +381,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
               "group clickable z-10 flex h-11 w-full cursor-pointer items-center border-r-[0.5px] border-subtle-1 bg-transparent text-13 group-[.selected-issue-row]:bg-accent-primary/5 after:absolute group-[.selected-issue-row]:hover:bg-accent-primary/10",
               {
                 "border-b-[0.5px]": !getIsIssuePeeked(issueDetail.id),
+                "h-auto min-h-11": wrapTitle,
                 "border border-accent-strong hover:border-accent-strong":
                   getIsIssuePeeked(issueDetail.id) && nestingLevel === peekIssue?.nestingLevel,
                 "shadow-[8px_22px_22px_10px_rgba(0,0,0,0.05)]": isScrolled.current,
@@ -394,8 +408,9 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
             {/* Workitem section */}
             <div
               className={cn("flex flex-grow items-center gap-0.5 py-2", {
-                "min-w-[360px]": !displayProperties?.key,
-                "min-w-60": displayProperties?.key,
+                "min-w-0": fixedColumns,
+                "min-w-[360px]": !fixedColumns && !displayProperties?.key,
+                "min-w-60": !fixedColumns && displayProperties?.key,
               })}
             >
               {/* select checkbox */}
@@ -428,10 +443,10 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
               )}
 
               {/* sub issues indentation */}
-              {nestingLevel !== 0 && <div style={{ width: subIssueIndentation }} />}
+              {nestingLevel !== 0 && <div className="shrink-0" style={{ width: subIssueIndentation }} />}
 
               {/* sub-issues chevron */}
-              <div className="grid size-4 place-items-center">
+              <div className="grid size-4 shrink-0 place-items-center">
                 {subIssuesCount > 0 && !isEpic && (
                   <button
                     type="button"
@@ -448,12 +463,15 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
                 )}
               </div>
 
-              <div className="my-auto flex h-full w-full items-center justify-between gap-2 truncate">
-                <div className="line-clamp-1 w-full text-14 text-primary">
+              <div className="my-auto flex h-full w-full min-w-0 items-center justify-between gap-2">
+                <div className={cn("w-full min-w-0 text-14 text-primary", !wrapTitle && "line-clamp-1")}>
                   <div className="w-full overflow-hidden">
                     <Tooltip tooltipContent={issueDetail.name} isMobile={isMobile}>
                       <div
-                        className="h-full w-full cursor-pointer truncate pr-4 text-left text-13 text-primary focus:outline-none"
+                        className={cn(
+                          "h-full w-full cursor-pointer pr-4 text-left text-13 text-primary focus:outline-none",
+                          wrapTitle ? "[overflow-wrap:anywhere] whitespace-normal" : "truncate"
+                        )}
                         tabIndex={-1}
                       >
                         {issueDetail.name}

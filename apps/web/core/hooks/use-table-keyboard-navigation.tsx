@@ -4,23 +4,19 @@
  * See the LICENSE file for details.
  */
 
+const getAdjacentRow = (element: HTMLElement, direction: -1 | 1) => {
+  const row = element.closest("tr");
+  const table = row?.closest("table");
+  if (!row || !table) return;
+
+  // Measured grouped tables use one tbody per parent and its descendants.
+  // Skip group headers and virtual padding, which have no focusable cells.
+  for (let index = row.rowIndex + direction; index >= 0 && index < table.rows.length; index += direction) {
+    const candidate = table.rows[index];
+    if (candidate.querySelector("td[tabindex], th[tabindex]")) return candidate;
+  }
+};
 export const useTableKeyboardNavigation = () => {
-  const getPreviousRow = (element: HTMLElement) => {
-    const previousRow = element.closest("tr")?.previousSibling;
-
-    if (previousRow) return previousRow;
-    //if previous row does not exist in the parent check the row with the header of the table
-    return element.closest("tbody")?.previousSibling?.childNodes?.[0];
-  };
-
-  const getNextRow = (element: HTMLElement) => {
-    const nextRow = element.closest("tr")?.nextSibling;
-
-    if (nextRow) return nextRow;
-    //if next row does not exist in the parent check the row with the body of the table
-    return element.closest("thead")?.nextSibling?.childNodes?.[0];
-  };
-
   const handleKeyBoardNavigation = function (e: React.KeyboardEvent<HTMLTableElement>) {
     const element = e.target as HTMLElement;
 
@@ -36,13 +32,13 @@ export const useTableKeyboardNavigation = () => {
     } else if (e.key == "ArrowUp") {
       // Up Arrow
       const index = Array.prototype.indexOf.call(element?.parentNode?.childNodes || [], element);
-      const prevRow = getPreviousRow(element);
+      const prevRow = getAdjacentRow(element, -1);
 
       c = prevRow?.childNodes?.[index] as HTMLElement;
     } else if (e.key == "ArrowDown") {
       // Down Arrow
       const index = Array.prototype.indexOf.call(element?.parentNode?.childNodes || [], element);
-      const nextRow = getNextRow(element);
+      const nextRow = getAdjacentRow(element, 1);
 
       c = nextRow?.childNodes[index] as HTMLElement;
     } else if (e.key == "Enter" || e.key == "Space") {

@@ -65,6 +65,7 @@
       },
       "extra": {
         "show_sub_issues": "Afficher les sous-éléments",
+        "wrap_titles": "Afficher les titres sur plusieurs lignes",
         "show_empty_groups": "Afficher les groupes vides"
       }
     },

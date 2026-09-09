@@ -58,7 +58,7 @@ export type TIssueOrderByOptions =
 
 export type TIssueGroupingFilters = "active" | "backlog";
 
-export type TIssueExtraOptions = "show_empty_groups" | "sub_issue";
+export type TIssueExtraOptions = "show_empty_groups" | "sub_issue" | "wrap_titles";
 
 export type TIssueParams =
   | "priority"
@@ -157,6 +157,7 @@ export interface IIssueDisplayFilterOptions {
   order_by?: TIssueOrderByOptions;
   show_empty_groups?: boolean;
   sub_issue?: boolean;
+  wrap_titles?: boolean;
 }
 export interface IIssueDisplayProperties {
   assignee?: boolean;
