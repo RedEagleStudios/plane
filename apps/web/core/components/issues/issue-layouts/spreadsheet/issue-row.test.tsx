@@ -8,7 +8,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import { observable, runInAction } from "mobx";
 import { describe, expect, it, vi } from "vitest";
-import type { TIssue, TIssueOrderByOptions } from "@plane/types";
+import type { TIssue, TIssueOrderByOptions, TWorkItemFilterExpression } from "@plane/types";
 import { EIssueLayoutTypes } from "@plane/types";
 import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 import { useIssues } from "@/hooks/store/use-issues";
@@ -72,6 +72,7 @@ function createHierarchy() {
     parent: ["late", "early"],
     early: ["late-grandchild", "early-grandchild"],
   });
+  const filteredChildren = observable.map<string, string[]>();
   const root = {
     viewId: "saved-view",
     issues: { getIssuesByIds: (ids: string[]) => ids.map((id) => issueMap[id]) },
@@ -95,7 +96,9 @@ function createHierarchy() {
   vi.mocked(useIssues).mockReturnValue(store as never);
   vi.mocked(useIssuesStore).mockReturnValue(store as never);
   vi.mocked(useIssueDetail).mockReturnValue({
-    subIssues: { subIssuesByIssueId: (id: string) => children[id] },
+    subIssues: {
+      subIssuesByIssueId: (id: string, query?: unknown) => (query ? filteredChildren.get(id) : children[id]),
+    },
     issue: { getIssueById: (id: string) => issueMap[id] },
     getIsIssuePeeked: () => false,
   } as never);
@@ -105,7 +108,12 @@ function createHierarchy() {
       filters.filters["saved-view"].displayFilters!.order_by = order;
     });
   };
-  return { setOrder, children, issueMap };
+  const setRichFilters = (richFilters: TWorkItemFilterExpression) => {
+    runInAction(() => {
+      filters.filters["saved-view"].richFilters = richFilters;
+    });
+  };
+  return { setOrder, setRichFilters, children, filteredChildren, issueMap };
 }
 
 const expandedKeys = new Set(["cycle:parent", "cycle:parent:early"]);
@@ -185,6 +193,16 @@ describe("Grouped spreadsheet child sorting", () => {
       children.early = ["late-grandchild", "early-grandchild"];
     });
     expect(renderHierarchy()).toEqual(ascendingRows);
+  });
+
+  it("does not render unfiltered detail siblings in a filtered hierarchy", () => {
+    const { setRichFilters, filteredChildren } = createHierarchy();
+    runInAction(() => {
+      filteredChildren.set("parent", ["early"]);
+    });
+    setRichFilters({ label_id__in: "bug-label" });
+
+    expect(renderHierarchy(new Set(["cycle:parent"]))).toEqual(["parent", "early", "other-parent"]);
   });
 
   it("keeps missing due dates last in both directions at each depth", () => {

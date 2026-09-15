@@ -6,7 +6,7 @@
 
 import { pull, concat, uniq, set, update } from "lodash-es";
 import { action, makeObservable, observable, runInAction } from "mobx";
-import { computedFn } from "mobx-utils";
+
 // Plane Imports
 import type {
   TIssue,
@@ -24,6 +24,17 @@ import { IssueService } from "@/services/issue";
 import type { IIssueDetail } from "./root.store";
 import type { IWorkItemSubIssueFiltersStore } from "./sub_issues_filter.store";
 import { WorkItemSubIssueFiltersStore } from "./sub_issues_filter.store";
+type TSubIssueQuery = Partial<Record<TIssueParams, string | boolean>>;
+type TFilteredSubIssuesIdMap = Record<string, Record<string, string[]>>;
+
+const getSubIssueQueryKey = (queries?: TSubIssueQuery) => {
+  if (!queries || Object.keys(queries).length === 0) return undefined;
+
+  const queryKey = new URLSearchParams();
+  for (const [key, value] of Object.entries(queries)) queryKey.set(key, String(value));
+  queryKey.sort();
+  return queryKey.toString();
+};
 
 export interface IIssueSubIssuesStoreActions {
   fetchSubIssues: (
@@ -57,12 +68,13 @@ export interface IIssueSubIssuesStore extends IIssueSubIssuesStoreActions {
   // observables
   subIssuesStateDistribution: TIssueSubIssuesStateDistributionMap;
   subIssues: TIssueSubIssuesIdMap;
+  filteredSubIssues: TFilteredSubIssuesIdMap;
   subIssueHelpers: Record<string, TSubIssueHelpers>; // parent_issue_id -> TSubIssueHelpers
   loader: TLoader;
   filters: IWorkItemSubIssueFiltersStore;
   // helper methods
   stateDistributionByIssueId: (issueId: string) => TSubIssuesStateDistribution | undefined;
-  subIssuesByIssueId: (issueId: string) => string[] | undefined;
+  subIssuesByIssueId: (issueId: string, queries?: TSubIssueQuery) => string[] | undefined;
   subIssueHelpersByIssueId: (issueId: string) => TSubIssueHelpers;
   // actions
   fetchOtherProjectProperties: (workspaceSlug: string, projectIds: string[]) => Promise<void>;
@@ -73,6 +85,7 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
   // observables
   subIssuesStateDistribution: TIssueSubIssuesStateDistributionMap = {};
   subIssues: TIssueSubIssuesIdMap = {};
+  filteredSubIssues: TFilteredSubIssuesIdMap = {};
   subIssueHelpers: Record<string, TSubIssueHelpers> = {};
   loader: TLoader = undefined;
 
@@ -88,6 +101,7 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
       // observables
       subIssuesStateDistribution: observable,
       subIssues: observable,
+      filteredSubIssues: observable,
       subIssueHelpers: observable,
       loader: observable.ref,
       // actions
@@ -113,7 +127,12 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
     return this.subIssuesStateDistribution[issueId] ?? undefined;
   };
 
-  subIssuesByIssueId = computedFn((issueId: string) => this.subIssues[issueId]);
+  subIssuesByIssueId = (issueId: string, queries?: TSubIssueQuery) => {
+    const queryKey = getSubIssueQueryKey(queries);
+    if (!queryKey) return this.subIssues[issueId];
+
+    return this.filteredSubIssues[issueId]?.[queryKey];
+  };
 
   subIssueHelpersByIssueId = (issueId: string) => ({
     preview_loader: this.subIssueHelpers?.[issueId]?.preview_loader || [],
@@ -139,6 +158,7 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
   ) => {
     this.loader = "init-loader";
     const response = await this.issueService.subIssues(workspaceSlug, projectId, parentIssueId, queries);
+    const queryKey = getSubIssueQueryKey(queries);
 
     const subIssuesStateDistribution = response?.state_distribution ?? {};
 
@@ -153,13 +173,22 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
       ) as string[];
       this.fetchOtherProjectProperties(workspaceSlug, otherProjectIds);
     }
-    if (issueList) {
+    if (!queryKey) {
       this.rootIssueDetailStore.rootIssueStore.issues.updateIssue(parentIssueId, {
         sub_issues_count: issueList.length,
       });
     }
 
     runInAction(() => {
+      if (queryKey) {
+        set(
+          this.filteredSubIssues,
+          [parentIssueId, queryKey],
+          issueList.map((issue) => issue.id)
+        );
+        return;
+      }
+
       set(this.subIssuesStateDistribution, parentIssueId, subIssuesStateDistribution);
       set(
         this.subIssues,
@@ -202,6 +231,7 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
         if (!issues) return createdIssueIds;
         return concat(issues, createdIssueIds);
       });
+      delete this.filteredSubIssues[parentIssueId];
     });
 
     this.rootIssueDetailStore.rootIssueStore.issues.addIssue(subIssues);
@@ -273,6 +303,11 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
         });
       }
     }
+    runInAction(() => {
+      delete this.filteredSubIssues[parentIssueId];
+      if (oldIssue.parent_id) delete this.filteredSubIssues[oldIssue.parent_id];
+      if (issueData.parent_id) delete this.filteredSubIssues[issueData.parent_id];
+    });
 
     return;
   };
@@ -307,6 +342,7 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
         [parentIssueId, "sub_issues_count"],
         this.subIssues[parentIssueId]?.length
       );
+      delete this.filteredSubIssues[parentIssueId];
     });
 
     return;
@@ -340,6 +376,7 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
         [parentIssueId, "sub_issues_count"],
         this.subIssues[parentIssueId]?.length
       );
+      delete this.filteredSubIssues[parentIssueId];
     });
 
     return;

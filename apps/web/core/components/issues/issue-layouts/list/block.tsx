@@ -121,6 +121,7 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
   );
   const hierarchyFilters = hierarchyFilterQuery?.filters;
   const hierarchyLayout = hierarchyFilterQuery?.layout;
+  const isSubIssueCacheLoaded = subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery) !== undefined;
   const shouldAutoExpandHierarchy = shouldAutoExpandIssueHierarchy(
     hierarchyFilterQuery,
     subIssuesCount,
@@ -159,7 +160,7 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
     if (!workspaceSlug || !issue?.project_id || !shouldAutoExpandHierarchy) return;
 
     const requestKey = `${hierarchyLayout}:${hierarchyFilters}`;
-    if (autoFetchedFilterRef.current === requestKey) return;
+    if (autoFetchedFilterRef.current === requestKey && isSubIssueCacheLoaded) return;
 
     autoFetchedFilterRef.current = requestKey;
     setExpanded(true);
@@ -177,6 +178,7 @@ export const IssueBlock = observer(function IssueBlock(props: IssueBlockProps) {
     hierarchyFilters,
     hierarchyLayout,
     isEpic,
+    isSubIssueCacheLoaded,
     issue,
     nestingLevel,
     setExpanded,

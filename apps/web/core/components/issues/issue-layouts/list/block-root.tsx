@@ -22,8 +22,10 @@ import { ListLoaderItemRow } from "@/components/ui/loader/layouts/list-layout-lo
 // hooks
 import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
+import { useIssuesStore } from "@/hooks/use-issue-layout-store";
 import { usePlatformOS } from "@/hooks/use-platform-os";
 // types
+import { getIssueHierarchyFilterQuery } from "../hierarchy-filter";
 import { HIGHLIGHT_CLASS, getIssueBlockId, isIssueNew } from "../utils";
 import { IssueBlock } from "./block";
 import type { TRenderQuickActions } from "./list-view-types";
@@ -78,6 +80,7 @@ export const IssueBlockRoot = observer(function IssueBlockRoot(props: Props) {
   const { isMobile } = usePlatformOS();
   // store hooks
   const { subIssues: subIssuesStore } = useIssueDetail(isEpic ? EIssueServiceType.EPICS : EIssueServiceType.ISSUES);
+  const { issuesFilter } = useIssuesStore();
 
   const isSubIssue = nestingLevel !== 0;
 
@@ -129,7 +132,11 @@ export const IssueBlockRoot = observer(function IssueBlockRoot(props: Props) {
 
   if (!issueId || !issuesMap[issueId]?.created_at) return null;
 
-  const subIssues = subIssuesStore.subIssuesByIssueId(issueId);
+  const hierarchyFilterQuery = getIssueHierarchyFilterQuery(
+    issuesFilter.issueFilters?.richFilters,
+    issuesFilter.issueFilters?.displayFilters?.layout
+  );
+  const subIssues = subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery);
   return (
     <div className="relative" ref={issueBlockRef} id={getIssueBlockId(issueId, groupId)}>
       <DropIndicator classNames={"absolute top-0 z-[2]"} isVisible={instruction === "DRAG_OVER"} />

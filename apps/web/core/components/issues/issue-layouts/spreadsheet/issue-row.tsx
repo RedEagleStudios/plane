@@ -112,7 +112,11 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
 
   // derived values
   const issue = issueMap[issueId];
-  const subIssueIds = subIssuesStore.subIssuesByIssueId(issueId);
+  const hierarchyFilterQuery = getIssueHierarchyFilterQuery(
+    issuesFilter.issueFilters?.richFilters,
+    issuesFilter.issueFilters?.displayFilters?.layout
+  );
+  const subIssueIds = subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery);
   const subIssues =
     isExpanded && !isEpic && subIssueIds && subIssueIds.length > 1 && "issuesSortWithOrderBy" in issues
       ? issues.issuesSortWithOrderBy(subIssueIds, issuesFilter.issueFilters?.displayFilters?.order_by ?? "-created_at")
@@ -265,6 +269,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     issuesFilter.issueFilters?.displayFilters?.layout
   );
   const hierarchyFilters = hierarchyFilterQuery?.filters;
+  const isSubIssueCacheLoaded = subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery) !== undefined;
   const hierarchyLayout = hierarchyFilterQuery?.layout;
   const shouldAutoExpandHierarchy = shouldAutoExpandIssueHierarchy(
     hierarchyFilterQuery,
@@ -286,7 +291,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     if (!workspaceSlug || !issueDetail?.project_id || !shouldAutoExpandHierarchy) return;
 
     const requestKey = `${hierarchyLayout}:${hierarchyFilters}`;
-    if (autoFetchedFilterRef.current === requestKey) return;
+    if (autoFetchedFilterRef.current === requestKey && isSubIssueCacheLoaded) return;
 
     autoFetchedFilterRef.current = requestKey;
     setExpanded(true);
@@ -304,6 +309,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     hierarchyFilters,
     hierarchyLayout,
     isEpic,
+    isSubIssueCacheLoaded,
     issueDetail,
     nestingLevel,
     setExpanded,
