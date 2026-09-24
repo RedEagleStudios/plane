@@ -77,6 +77,11 @@ WEBHOOK_ALLOWED_HOSTS = [
     _host.strip().rstrip(".").lower() for _host in _webhook_allowed_hosts_raw.split(",") if _host.strip()
 ]
 
+# Discord webhook that receives a message whenever an outgoing webhook delivery
+# fails (transport errors after all retries, rejected URLs, non-2xx responses).
+# Failing webhooks stay active; this is the only failure alert.
+WEBHOOK_FAILURE_DISCORD_WEBHOOK_URL = os.environ.get("WEBHOOK_FAILURE_DISCORD_WEBHOOK_URL", "")
+
 # Webhook disallowed domains — comma-separated hostnames. Webhooks targeting
 # these domains or any of their subdomains are rejected (the request host is
 # always appended at validation time as a loop-back guard). Empty by default

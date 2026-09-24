@@ -17,9 +17,7 @@ from celery import shared_task
 # Django imports
 from django.conf import settings
 from django.db.models import Prefetch
-from django.core.mail import EmailMultiAlternatives, get_connection
 from django.core.serializers.json import DjangoJSONEncoder
-from django.template.loader import render_to_string
 from django.core.exceptions import ObjectDoesNotExist
 
 # Module imports
@@ -49,8 +47,6 @@ from plane.db.models import (
     IssueLabel,
     IssueAssignee,
 )
-from plane.license.utils.instance_value import get_email_configuration
-from plane.utils.email import generate_plain_text_from_html
 from plane.utils.exception_logger import log_exception
 from plane.utils.url_security import pinned_fetch
 
@@ -168,68 +164,47 @@ def get_model_data(event: str, event_id: Union[str, List[str]], many: bool = Fal
         raise ObjectDoesNotExist(f"No {event} found with id: {event_id}")
 
 
-@shared_task
-def send_webhook_deactivation_email(webhook_id: str, receiver_id: str, current_site: str, reason: str) -> None:
-    """
-    Send an email notification when a webhook is deactivated.
+DISCORD_REASON_LIMIT = 1_000
 
-    Args:
-        webhook_id (str): ID of the deactivated webhook
-        receiver_id (str): ID of the user to receive the notification
-        current_site (str): Current site URL
-        reason (str): Reason for webhook deactivation
+
+def notify_webhook_failure(
+    webhook: Webhook,
+    slug: str,
+    event: str,
+    action: str,
+    delivery_id: str,
+    attempts: int,
+    reason: str,
+) -> None:
+    """Post a failed webhook delivery to the configured Discord channel.
+
+    Best effort: alert failures are logged and never retried, so they cannot
+    re-trigger the webhook delivery retry loop.
     """
+    discord_url = settings.WEBHOOK_FAILURE_DISCORD_WEBHOOK_URL
+    if not discord_url:
+        return
+
+    if len(reason) > DISCORD_REASON_LIMIT:
+        reason = reason[:DISCORD_REASON_LIMIT] + "…"
+    reason = reason.replace("```", "'''")
+    content = (
+        f"**Plane webhook delivery failed** (`{slug}`)\n"
+        f"URL: <{webhook.url}>\n"
+        f"Event: `{event}` / `{action}` · attempts: {attempts} · delivery: `{delivery_id}`\n"
+        f"Webhook stays active; failed payload is in the webhook logs.\n"
+        f"```\n{reason}\n```"
+    )
     try:
-        (
-            EMAIL_HOST,
-            EMAIL_HOST_USER,
-            EMAIL_HOST_PASSWORD,
-            EMAIL_PORT,
-            EMAIL_USE_TLS,
-            EMAIL_USE_SSL,
-            EMAIL_FROM,
-        ) = get_email_configuration()
-
-        receiver = User.objects.get(pk=receiver_id)
-        webhook = Webhook.objects.get(pk=webhook_id)
-
-        # Get the webhook payload
-        subject = "Webhook Deactivated"
-        message = f"Webhook {webhook.url} has been deactivated due to failed requests."
-
-        # Send the mail
-        context = {
-            "email": receiver.email,
-            "message": message,
-            "webhook_url": f"{current_site}/{str(webhook.workspace.slug)}/settings/webhooks/{str(webhook.id)}",
-        }
-        html_content = render_to_string("emails/notifications/webhook-deactivate.html", context)
-        text_content = generate_plain_text_from_html(html_content)
-
-        # Set the email connection
-        connection = get_connection(
-            host=EMAIL_HOST,
-            port=int(EMAIL_PORT),
-            username=EMAIL_HOST_USER,
-            password=EMAIL_HOST_PASSWORD,
-            use_tls=EMAIL_USE_TLS == "1",
-            use_ssl=EMAIL_USE_SSL == "1",
+        response = requests.post(
+            discord_url,
+            json={"content": content, "allowed_mentions": {"parse": []}},
+            timeout=10,
         )
-
-        # Create the email message
-        msg = EmailMultiAlternatives(
-            subject=subject,
-            body=text_content,
-            from_email=EMAIL_FROM,
-            to=[receiver.email],
-            connection=connection,
-        )
-        msg.attach_alternative(html_content, "text/html")
-        msg.send()
-        logger.info("Email sent successfully.")
-    except Exception as e:
+        response.raise_for_status()
+    except requests.RequestException as e:
         log_exception(e, warning=True)
-        logger.error(f"Failed to send email: {e}")
+        logger.error(f"Failed to send webhook failure alert to Discord: {e}")
 
 
 @shared_task(
@@ -336,7 +311,19 @@ def webhook_send_task(
             retry_count=self.request.retries,
             event_type=event,
         )
-        logger.info(f"Webhook {webhook.id} sent successfully")
+        if response.ok:
+            logger.info(f"Webhook {webhook.id} sent successfully")
+        else:
+            logger.warning(f"Webhook {webhook.id} returned HTTP {response.status_code}")
+            notify_webhook_failure(
+                webhook=webhook,
+                slug=slug,
+                event=event,
+                action=action,
+                delivery_id=headers["X-Plane-Delivery"],
+                attempts=self.request.retries + 1,
+                reason=f"HTTP {response.status_code}: {response.text}",
+            )
     except requests.RequestException as e:
         # Log the failed webhook request
         save_webhook_log(
@@ -351,25 +338,25 @@ def webhook_send_task(
             event_type=event,
         )
         logger.error(f"Webhook {webhook.id} failed with error: {e}")
-        # Retry logic
+        # Retry logic. Exhausted retries only alert; the webhook stays active so
+        # one outage of the receiver does not silently stop all future deliveries.
         if self.request.retries >= self.max_retries:
-            Webhook.objects.filter(pk=webhook.id).update(is_active=False)
-            if webhook:
-                # send email for the deactivation of the webhook
-                send_webhook_deactivation_email.delay(
-                    webhook_id=webhook.id,
-                    receiver_id=webhook.created_by_id,
-                    reason=str(e),
-                    current_site=current_site,
-                )
+            notify_webhook_failure(
+                webhook=webhook,
+                slug=slug,
+                event=event,
+                action=action,
+                delivery_id=headers["X-Plane-Delivery"],
+                attempts=self.request.retries + 1,
+                reason=f"{type(e).__name__}: {e}",
+            )
             return
         raise requests.RequestException()
 
     except ValueError as e:
         # SSRF validation failure (blocked/internal target or unresolvable host).
-        # Not retryable — record it so the failure is visible to the admin, but
-        # do not raise (no Celery retry) and do not auto-deactivate (the cause
-        # may be transient DNS).
+        # Not retryable — record and alert so the failure is visible to the
+        # admin, but do not raise (no Celery retry).
         save_webhook_log(
             webhook=webhook,
             request_method=action,
@@ -382,6 +369,15 @@ def webhook_send_task(
             event_type=event,
         )
         logger.warning(f"Webhook {webhook.id} URL rejected: {e}")
+        notify_webhook_failure(
+            webhook=webhook,
+            slug=slug,
+            event=event,
+            action=action,
+            delivery_id=headers["X-Plane-Delivery"],
+            attempts=self.request.retries + 1,
+            reason=f"URL rejected: {e}",
+        )
         return
 
     except Exception as e:
