@@ -26,6 +26,13 @@ import type { IWorkItemSubIssueFiltersStore } from "./sub_issues_filter.store";
 import { WorkItemSubIssueFiltersStore } from "./sub_issues_filter.store";
 type TSubIssueQuery = Partial<Record<TIssueParams, string | boolean>>;
 type TFilteredSubIssuesIdMap = Record<string, Record<string, string[]>>;
+type TSubIssueSubscription = {
+  workspaceSlug: string;
+  projectId: string;
+  parentIssueId: string;
+  queries?: TSubIssueQuery;
+  subscribers: number;
+};
 
 const getSubIssueQueryKey = (queries?: TSubIssueQuery) => {
   if (!queries || Object.keys(queries).length === 0) return undefined;
@@ -76,6 +83,13 @@ export interface IIssueSubIssuesStore extends IIssueSubIssuesStoreActions {
   stateDistributionByIssueId: (issueId: string) => TSubIssuesStateDistribution | undefined;
   subIssuesByIssueId: (issueId: string, queries?: TSubIssueQuery) => string[] | undefined;
   subIssueHelpersByIssueId: (issueId: string) => TSubIssueHelpers;
+  subscribeToSubIssues: (
+    workspaceSlug: string,
+    projectId: string,
+    parentIssueId: string,
+    queries?: TSubIssueQuery
+  ) => () => void;
+  refreshSubscribedSubIssues: (workspaceSlug: string, projectId?: string) => Promise<void>;
   // actions
   fetchOtherProjectProperties: (workspaceSlug: string, projectIds: string[]) => Promise<void>;
   setSubIssueHelpers: (parentIssueId: string, key: TSubIssueHelpersKeys, value: string) => void;
@@ -88,6 +102,8 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
   filteredSubIssues: TFilteredSubIssuesIdMap = {};
   subIssueHelpers: Record<string, TSubIssueHelpers> = {};
   loader: TLoader = undefined;
+  private readonly subscriptions = new Map<string, TSubIssueSubscription>();
+  private readonly pendingRequests = new Map<string, Promise<TIssueSubIssues>>();
 
   filters: IWorkItemSubIssueFiltersStore;
   // root store
@@ -149,12 +165,91 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
       return concat(_subIssueHelpers, value);
     });
   };
+  subscribeToSubIssues = (
+    workspaceSlug: string,
+    projectId: string,
+    parentIssueId: string,
+    queries?: TSubIssueQuery
+  ) => {
+    const key = JSON.stringify([workspaceSlug, projectId, parentIssueId, getSubIssueQueryKey(queries)]);
+    const existing = this.subscriptions.get(key);
+    if (existing) existing.subscribers += 1;
+    else {
+      this.subscriptions.set(key, {
+        workspaceSlug,
+        projectId,
+        parentIssueId,
+        queries: queries ? { ...queries } : undefined,
+        subscribers: 1,
+      });
+    }
+    if (this.subscriptions.size === 1 && !existing && typeof window !== "undefined") {
+      window.addEventListener("focus", this.refreshOnFocus);
+      document.addEventListener("visibilitychange", this.refreshOnFocus);
+    }
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      const subscription = this.subscriptions.get(key);
+      if (subscription && --subscription.subscribers === 0) this.subscriptions.delete(key);
+      if (this.subscriptions.size === 0 && typeof window !== "undefined") {
+        window.removeEventListener("focus", this.refreshOnFocus);
+        document.removeEventListener("visibilitychange", this.refreshOnFocus);
+      }
+    };
+  };
 
-  fetchSubIssues = async (
+  private refreshOnFocus = () => {
+    if (document.visibilityState === "hidden") return;
+    const workspaces = new Set(Array.from(this.subscriptions.values(), ({ workspaceSlug }) => workspaceSlug));
+    for (const workspaceSlug of workspaces) {
+      void this.refreshSubscribedSubIssues(workspaceSlug).catch((error) => {
+        console.error("Error refreshing expanded sub-work items:", error);
+      });
+    }
+  };
+
+  refreshSubscribedSubIssues = async (workspaceSlug: string, projectId?: string) => {
+    const requests: Promise<TIssueSubIssues>[] = [];
+    for (const subscription of this.subscriptions.values()) {
+      if (subscription.workspaceSlug !== workspaceSlug || (projectId && subscription.projectId !== projectId)) continue;
+      requests.push(
+        this.fetchSubIssues(
+          subscription.workspaceSlug,
+          subscription.projectId,
+          subscription.parentIssueId,
+          subscription.queries
+        )
+      );
+    }
+    await Promise.all(requests);
+  };
+
+  fetchSubIssues = (
     workspaceSlug: string,
     projectId: string,
     parentIssueId: string,
     queries?: Partial<Record<TIssueParams, string | boolean>>
+  ) => {
+    const key = JSON.stringify([workspaceSlug, projectId, parentIssueId, getSubIssueQueryKey(queries)]);
+    const pending = this.pendingRequests.get(key);
+    if (pending) return pending;
+    const request = this.loadSubIssues(workspaceSlug, projectId, parentIssueId, queries).finally(() => {
+      this.pendingRequests.delete(key);
+      runInAction(() => {
+        if (this.pendingRequests.size === 0) this.loader = undefined;
+      });
+    });
+    this.pendingRequests.set(key, request);
+    return request;
+  };
+
+  private loadSubIssues = async (
+    workspaceSlug: string,
+    projectId: string,
+    parentIssueId: string,
+    queries?: TSubIssueQuery
   ) => {
     this.loader = "init-loader";
     const response = await this.issueService.subIssues(workspaceSlug, projectId, parentIssueId, queries);
@@ -197,7 +292,6 @@ export class IssueSubIssuesStore implements IIssueSubIssuesStore {
       );
     });
 
-    this.loader = undefined;
     return response;
   };
 

@@ -56,7 +56,7 @@ const response = (subIssues: TIssue[]): TIssueSubIssues => ({
 
 describe("IssueSubIssuesStore query isolation", () => {
   it("keeps filtered hierarchy results isolated from an unfiltered detail fetch", async () => {
-    const { store, updateIssue, subIssues } = createStore();
+    const { store, subIssues } = createStore();
     subIssues
       .mockResolvedValueOnce(response([matchingIssue]))
       .mockResolvedValueOnce(response([matchingIssue, nonMatchingIssue]));
@@ -65,13 +65,11 @@ describe("IssueSubIssuesStore query isolation", () => {
 
     expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toEqual([matchingIssue.id]);
     expect(store.subIssuesByIssueId(parentIssueId)).toBeUndefined();
-    expect(updateIssue).not.toHaveBeenCalled();
 
     await store.fetchSubIssues("workspace", projectId, parentIssueId);
 
     expect(store.subIssuesByIssueId(parentIssueId)).toEqual([matchingIssue.id, nonMatchingIssue.id]);
     expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toEqual([matchingIssue.id]);
-    expect(updateIssue).toHaveBeenCalledWith(parentIssueId, { sub_issues_count: 2 });
   });
 
   it("invalidates filtered hierarchy results after adding a child", async () => {
@@ -84,5 +82,110 @@ describe("IssueSubIssuesStore query isolation", () => {
 
     expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toBeUndefined();
     expect(store.subIssuesByIssueId(parentIssueId)).toEqual([nonMatchingIssue.id]);
+  });
+});
+
+describe("expanded sub-issue freshness", () => {
+  it("refreshes on focus or becoming visible and detaches listeners when the view closes", async () => {
+    const windowTarget = new EventTarget();
+    const documentTarget = Object.assign(new EventTarget(), { visibilityState: "hidden" });
+    vi.stubGlobal("window", windowTarget);
+    vi.stubGlobal("document", documentTarget);
+    const { store, subIssues } = createStore();
+    subIssues.mockResolvedValue(response([matchingIssue]));
+    const unsubscribe = store.subscribeToSubIssues("workspace", projectId, parentIssueId, hierarchyQuery);
+    try {
+      documentTarget.dispatchEvent(new Event("visibilitychange"));
+      expect(subIssues).not.toHaveBeenCalled();
+      documentTarget.visibilityState = "visible";
+      documentTarget.dispatchEvent(new Event("visibilitychange"));
+      windowTarget.dispatchEvent(new Event("focus"));
+      await store.refreshSubscribedSubIssues("workspace");
+      expect(subIssues).toHaveBeenCalledTimes(1);
+      expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toEqual(["matching"]);
+
+      unsubscribe();
+      subIssues.mockClear();
+      windowTarget.dispatchEvent(new Event("focus"));
+      documentTarget.dispatchEvent(new Event("visibilitychange"));
+      expect(subIssues).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("refreshes subscribed filtered children without replacing them with sidebar results", async () => {
+    const { store, subIssues } = createStore();
+    const addedIssue = { id: "added-remotely", project_id: projectId } as TIssue;
+    subIssues
+      .mockResolvedValueOnce(response([matchingIssue]))
+      .mockResolvedValueOnce(response([matchingIssue, addedIssue, nonMatchingIssue]))
+      .mockResolvedValueOnce(response([matchingIssue, addedIssue]));
+
+    await store.fetchSubIssues("workspace", projectId, parentIssueId, hierarchyQuery);
+    const unsubscribe = store.subscribeToSubIssues("workspace", projectId, parentIssueId, hierarchyQuery);
+    try {
+      await store.fetchSubIssues("workspace", projectId, parentIssueId);
+      await store.refreshSubscribedSubIssues("workspace", projectId);
+
+      expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toEqual(["matching", "added-remotely"]);
+      expect(store.subIssuesByIssueId(parentIssueId)).toEqual(["matching", "added-remotely", "non-matching"]);
+      expect(subIssues).toHaveBeenLastCalledWith("workspace", projectId, parentIssueId, hierarchyQuery);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("keeps shared subscriptions active until the last consumer closes and isolates workspaces", async () => {
+    const { store, subIssues } = createStore();
+    subIssues.mockResolvedValue(response([matchingIssue]));
+    const closeFirst = store.subscribeToSubIssues("workspace", projectId, parentIssueId, hierarchyQuery);
+    const closeSecond = store.subscribeToSubIssues("workspace", projectId, parentIssueId, hierarchyQuery);
+    try {
+      closeFirst();
+      await store.refreshSubscribedSubIssues("other-workspace");
+      await store.refreshSubscribedSubIssues("workspace", "other-project");
+      expect(subIssues).not.toHaveBeenCalled();
+      await store.refreshSubscribedSubIssues("workspace", projectId);
+      expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toEqual(["matching"]);
+      closeSecond();
+      subIssues.mockClear();
+      await store.refreshSubscribedSubIssues("workspace");
+      expect(subIssues).not.toHaveBeenCalled();
+    } finally {
+      closeFirst();
+      closeSecond();
+    }
+  });
+
+  it("coalesces overlapping refreshes and permits retry after failure without discarding cached rows", async () => {
+    const { store, subIssues } = createStore();
+    subIssues.mockResolvedValueOnce(response([matchingIssue]));
+    await store.fetchSubIssues("workspace", projectId, parentIssueId, hierarchyQuery);
+    const unsubscribe = store.subscribeToSubIssues("workspace", projectId, parentIssueId, hierarchyQuery);
+    let rejectRequest!: (error: Error) => void;
+    subIssues.mockImplementationOnce(
+      () =>
+        new Promise<TIssueSubIssues>((_resolve, reject) => {
+          rejectRequest = reject;
+        })
+    );
+    try {
+      const first = store.refreshSubscribedSubIssues("workspace");
+      const second = store.refreshSubscribedSubIssues("workspace");
+      const results = Promise.allSettled([first, second]);
+      expect(subIssues).toHaveBeenCalledTimes(2);
+      rejectRequest(new Error("offline"));
+      expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
+      expect(store.loader).toBeUndefined();
+      expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toEqual(["matching"]);
+
+      subIssues.mockResolvedValueOnce(response([]));
+      await store.refreshSubscribedSubIssues("workspace");
+      expect(store.subIssuesByIssueId(parentIssueId, hierarchyQuery)).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
   });
 });

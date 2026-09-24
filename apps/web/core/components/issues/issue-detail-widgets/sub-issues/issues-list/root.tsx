@@ -4,10 +4,11 @@
  * See the LICENSE file for details.
  */
 
-import { useCallback, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { observer } from "mobx-react";
 // plane imports
 import { ListFilter } from "lucide-react";
+import { ALL_ISSUES } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";
 import { Button } from "@plane/propel/button";
 import type { GroupByColumnTypes, TIssue, TIssueServiceType, TSubIssueOperations } from "@plane/types";
@@ -18,6 +19,10 @@ import { getGroupByColumns, isWorkspaceLevel } from "@/components/issues/issue-l
 import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 
 import { SubIssuesListGroup } from "./list-group";
+import { SubIssuesListItem } from "./list-item";
+import { useSubIssueVirtualizer } from "./use-virtualized-rows";
+import { buildSubIssueVirtualRows } from "./virtual-rows";
+
 type Props = {
   workspaceSlug: string;
   projectId: string;
@@ -49,20 +54,31 @@ export const SubIssuesListRoot = observer(function SubIssuesListRoot(props: Prop
     spacingLeft = 0,
   } = props;
   const { t } = useTranslation();
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [subscriptions] = useState(() => new Map<string, () => void>());
   // store hooks
   const {
+    issue: { getIssueById },
     subIssues: {
       subIssuesByIssueId,
+      subscribeToSubIssues,
       filters: { getSubIssueFilters, getGroupedSubWorkItems, getFilteredSubWorkItems, resetFilters },
     },
   } = useIssueDetail(issueServiceType);
+  // Descendants of epic work items are ordinary work items, just as in the detail view.
+  const {
+    issue: { getIssueById: getNestedIssueById },
+    subIssues: {
+      subIssuesByIssueId: getNestedChildIds,
+      subIssueHelpersByIssueId,
+      subscribeToSubIssues: subscribeToNestedSubIssues,
+    },
+  } = useIssueDetail();
 
-  // derived values
   const filters = getSubIssueFilters(rootIssueId);
-  const isRootLevel = useMemo(() => rootIssueId === parentIssueId, [rootIssueId, parentIssueId]);
+  const isRootLevel = rootIssueId === parentIssueId;
   const group_by = isRootLevel ? (filters?.displayFilters?.group_by ?? null) : null;
   const filteredSubWorkItemsCount = (getFilteredSubWorkItems(rootIssueId, filters.filters ?? {}) ?? []).length;
-
   const groups = getGroupByColumns({
     groupBy: group_by as GroupByColumnTypes,
     includeNone: true,
@@ -70,23 +86,59 @@ export const SubIssuesListRoot = observer(function SubIssuesListRoot(props: Prop
     isEpic: issueServiceType === EIssueServiceType.EPICS,
     projectId,
   });
+  const groupedSubIssues = isRootLevel ? getGroupedSubWorkItems(rootIssueId) : undefined;
+  const rows = buildSubIssueVirtualRows({
+    groups: (groups ?? []).map((group) => ({
+      group,
+      issueIds: isRootLevel ? (groupedSubIssues?.[group.id] ?? []) : (subIssuesByIssueId(parentIssueId) ?? []),
+      isExpanded: group.id === ALL_ISSUES || !collapsedGroups.has(group.id),
+    })),
+    parentIssueId,
+    rootIssueId,
+    projectId,
+    spacingLeft,
+    issueServiceType,
+    getIssue: (issueId, serviceType) =>
+      serviceType === issueServiceType ? getIssueById(issueId) : getNestedIssueById(issueId),
+    getChildIds: getNestedChildIds,
+    getExpandedIssueIds: (issueId) => subIssueHelpersByIssueId(issueId).issue_visibility,
+  });
+  const { listRef, virtualizer, scrollMargin } = useSubIssueVirtualizer(rows);
 
-  const getWorkItemIds = useCallback(
-    (groupId: string) => {
-      if (isRootLevel) {
-        const groupedSubIssues = getGroupedSubWorkItems(rootIssueId);
-        return groupedSubIssues?.[groupId] ?? [];
+  // Keep refresh subscriptions tied to the expanded model, not mounted virtual rows.
+  useEffect(() => {
+    const activeKeys = new Set<string>();
+    const subscribe = (id: string, parentProjectId: string, serviceType: TIssueServiceType) => {
+      const key = JSON.stringify([workspaceSlug, parentProjectId, id, serviceType]);
+      activeKeys.add(key);
+      if (subscriptions.has(key)) return;
+      const subscribeToParent = serviceType === issueServiceType ? subscribeToSubIssues : subscribeToNestedSubIssues;
+      subscriptions.set(key, subscribeToParent(workspaceSlug, parentProjectId, id));
+    };
+    subscribe(parentIssueId, projectId, issueServiceType);
+    for (const row of rows) {
+      if (row.type === "issue" && row.expandedProjectId) {
+        subscribe(row.issueId, row.expandedProjectId, EIssueServiceType.ISSUES);
       }
-      const subIssueIds = subIssuesByIssueId(parentIssueId);
-      return subIssueIds ?? [];
-    },
-    [isRootLevel, subIssuesByIssueId, rootIssueId, getGroupedSubWorkItems, parentIssueId]
-  );
+    }
+    for (const [key, unsubscribe] of subscriptions) {
+      if (activeKeys.has(key)) continue;
+      unsubscribe();
+      subscriptions.delete(key);
+    }
+  });
+
+  useEffect(() => {
+    return () => {
+      for (const unsubscribe of subscriptions.values()) unsubscribe();
+      subscriptions.clear();
+    };
+  }, [subscriptions]);
 
   const isSubWorkItems = issueServiceType === EIssueServiceType.ISSUES;
 
   return (
-    <div className="relative">
+    <div ref={listRef} className="relative" data-sub-issues-list>
       {isRootLevel && filteredSubWorkItemsCount === 0 ? (
         <SectionEmptyState
           title={
@@ -108,23 +160,49 @@ export const SubIssuesListRoot = observer(function SubIssuesListRoot(props: Prop
           }
         />
       ) : (
-        groups?.map((group) => (
-          <SubIssuesListGroup
-            key={group.id}
-            workItemIds={getWorkItemIds(group.id)}
-            projectId={projectId}
-            workspaceSlug={workspaceSlug}
-            group={group}
-            serviceType={issueServiceType}
-            canEdit={canEdit}
-            parentIssueId={parentIssueId}
-            rootIssueId={rootIssueId}
-            handleIssueCrudState={handleIssueCrudState}
-            subIssueOperations={subIssueOperations}
-            storeType={storeType}
-            spacingLeft={spacingLeft}
-          />
-        ))
+        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const row = rows[virtualItem.index];
+            return (
+              <div
+                key={row.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualItem.index}
+                className="absolute top-0 left-0 w-full"
+                style={{ transform: `translateY(${virtualItem.start - scrollMargin}px)` }}
+              >
+                {row.type === "group" ? (
+                  <SubIssuesListGroup
+                    group={row.group}
+                    count={row.count}
+                    isExpanded={row.isExpanded}
+                    onToggle={() =>
+                      setCollapsedGroups((current) => {
+                        const next = new Set(current);
+                        if (next.has(row.group.id)) next.delete(row.group.id);
+                        else next.add(row.group.id);
+                        return next;
+                      })
+                    }
+                  />
+                ) : (
+                  <SubIssuesListItem
+                    workspaceSlug={workspaceSlug}
+                    projectId={row.projectId}
+                    parentIssueId={row.parentIssueId}
+                    rootIssueId={rootIssueId}
+                    issueId={row.issueId}
+                    canEdit={canEdit}
+                    handleIssueCrudState={handleIssueCrudState}
+                    subIssueOperations={subIssueOperations}
+                    issueServiceType={row.issueServiceType}
+                    spacingLeft={row.spacingLeft}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

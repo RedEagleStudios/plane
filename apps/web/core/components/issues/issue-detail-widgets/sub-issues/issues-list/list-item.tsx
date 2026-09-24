@@ -11,7 +11,7 @@ import { LinkIcon, EditIcon, TrashIcon, CloseIcon, ChevronRightIcon } from "@pla
 // plane imports
 import { Tooltip } from "@plane/propel/tooltip";
 import type { TIssue, TIssueServiceType, TSubIssueOperations } from "@plane/types";
-import { EIssueServiceType, EIssuesStoreType } from "@plane/types";
+import { EIssueServiceType } from "@plane/types";
 import { ControlLink, CustomMenu } from "@plane/ui";
 import { cn, generateWorkItemLink } from "@plane/utils";
 // helpers
@@ -26,7 +26,6 @@ import { usePlatformOS } from "@/hooks/use-platform-os";
 import { IssueIdentifier } from "@/components/issues/issue-detail/issue-identifier";
 // local components
 import { SubIssuesListItemProperties } from "./properties";
-import { SubIssuesListRoot } from "./root";
 
 type Props = {
   workspaceSlug: string;
@@ -43,7 +42,6 @@ type Props = {
   subIssueOperations: TSubIssueOperations;
   issueId: string;
   issueServiceType?: TIssueServiceType;
-  storeType?: EIssuesStoreType;
 };
 
 export const SubIssuesListItem = observer(function SubIssuesListItem(props: Props) {
@@ -58,7 +56,6 @@ export const SubIssuesListItem = observer(function SubIssuesListItem(props: Prop
     handleIssueCrudState,
     subIssueOperations,
     issueServiceType = EIssueServiceType.ISSUES,
-    storeType = EIssuesStoreType.PROJECT,
   } = props;
   const { t } = useTranslation();
   const {
@@ -88,7 +85,7 @@ export const SubIssuesListItem = observer(function SubIssuesListItem(props: Prop
   const displayProperties = subIssueFilters?.displayProperties ?? {};
 
   //
-  const handleIssuePeekOverview = (issue: TIssue) => handleRedirection(workspaceSlug, issue, isMobile);
+  const handleIssuePeekOverview = (workItem: TIssue) => handleRedirection(workspaceSlug, workItem, isMobile);
 
   if (!issue) return <></>;
 
@@ -125,14 +122,17 @@ export const SubIssuesListItem = observer(function SubIssuesListItem(props: Prop
                       <Loader width={14} strokeWidth={2} className="animate-spin" />
                     </div>
                   ) : (
-                    <div
+                    <button
+                      type="button"
+                      aria-label={issue.name}
+                      aria-expanded={subIssueHelpers.issue_visibility.includes(issueId)}
                       className="flex h-full w-full cursor-pointer items-center justify-center text-placeholder hover:text-tertiary"
                       onClick={async (e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         if (!subIssueHelpers.issue_visibility.includes(issueId)) {
                           setSubIssueHelpers(parentIssueId, "preview_loader", issueId);
-                          await fetchSubIssues(workspaceSlug, projectId, issueId);
+                          await fetchSubIssues(workspaceSlug, issue.project_id ?? projectId, issueId);
                           setSubIssueHelpers(parentIssueId, "preview_loader", issueId);
                         }
                         setSubIssueHelpers(parentIssueId, "issue_visibility", issueId);
@@ -144,7 +144,7 @@ export const SubIssuesListItem = observer(function SubIssuesListItem(props: Prop
                         })}
                         strokeWidth={2.5}
                       />
-                    </div>
+                    </button>
                   )}
                 </>
               )}
@@ -171,6 +171,8 @@ export const SubIssuesListItem = observer(function SubIssuesListItem(props: Prop
             </div>
 
             <div
+              role="group"
+              onKeyDown={(e) => e.stopPropagation()}
               className="flex-shrink-0 text-13"
               onClick={(e) => {
                 e.preventDefault();
@@ -249,24 +251,6 @@ export const SubIssuesListItem = observer(function SubIssuesListItem(props: Prop
           </div>
         )}
       </ControlLink>
-
-      {/* should not expand the current issue if it is also the root issue*/}
-      {subIssueHelpers.issue_visibility.includes(issueId) &&
-        issue.project_id &&
-        subIssueCount > 0 &&
-        !isCurrentIssueRoot && (
-          <SubIssuesListRoot
-            storeType={storeType}
-            workspaceSlug={workspaceSlug}
-            projectId={issue.project_id}
-            parentIssueId={issue.id}
-            rootIssueId={rootIssueId}
-            spacingLeft={spacingLeft + 22}
-            canEdit={canEdit}
-            handleIssueCrudState={handleIssueCrudState}
-            subIssueOperations={subIssueOperations}
-          />
-        )}
     </div>
   );
 });

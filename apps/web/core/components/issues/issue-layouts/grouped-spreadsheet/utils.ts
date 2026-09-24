@@ -5,6 +5,7 @@
  */
 
 import type { TIssueGroupByOptions } from "@plane/types";
+import { MAX_FILTERED_HIERARCHY_DEPTH } from "../hierarchy-filter";
 
 export const GROUPED_TABLE_PAGE_SIZE = 100;
 
@@ -18,7 +19,7 @@ export interface GroupedTableVirtualGroup {
 
 export type GroupedTableVirtualRow =
   | { type: "group"; key: string; groupId: string }
-  | { type: "issue"; key: string; groupId: string; issueId: string }
+  | { type: "issue"; key: string; groupId: string; issueId: string; nestingLevel: number; isExpanded: boolean }
   | {
       type: "load-more";
       key: string;
@@ -28,6 +29,11 @@ export type GroupedTableVirtualRow =
       unloadedCount: number;
       isLoading: boolean;
     };
+
+type GroupedTableHierarchy = {
+  getSubIssueIds: (issueId: string) => readonly string[] | undefined;
+  isExpanded: (issueId: string, expansionKey: string, nestingLevel: number) => boolean;
+};
 
 type GroupVisibilityOptions = {
   cycleStatus?: string | null;
@@ -44,15 +50,32 @@ export function shouldShowGroupedTableGroup(options: GroupVisibilityOptions): bo
   return issueCount > 0;
 }
 
-export function buildGroupedTableVirtualRows(groups: GroupedTableVirtualGroup[]): GroupedTableVirtualRow[] {
+export function buildGroupedTableVirtualRows(
+  groups: GroupedTableVirtualGroup[],
+  hierarchy?: GroupedTableHierarchy
+): GroupedTableVirtualRow[] {
   const rows: GroupedTableVirtualRow[] = [];
+  const ancestorIds = new Set<string>();
+  const appendIssue = (groupId: string, issueId: string, key: string, nestingLevel: number) => {
+    if (ancestorIds.has(issueId)) return;
+    const isExpanded =
+      nestingLevel < MAX_FILTERED_HIERARCHY_DEPTH && (hierarchy?.isExpanded(issueId, key, nestingLevel) ?? false);
+    rows.push({ type: "issue", key, groupId, issueId, nestingLevel, isExpanded });
+    if (!isExpanded) return;
+
+    ancestorIds.add(issueId);
+    for (const childId of hierarchy?.getSubIssueIds(issueId) ?? []) {
+      appendIssue(groupId, childId, `${key}:${childId}`, nestingLevel + 1);
+    }
+    ancestorIds.delete(issueId);
+  };
 
   for (const group of groups) {
     rows.push({ type: "group", key: `group:${group.id}`, groupId: group.id });
     if (!group.isExpanded) continue;
 
     for (const issueId of group.issueIds) {
-      rows.push({ type: "issue", key: `issue:${group.id}:${issueId}`, groupId: group.id, issueId });
+      appendIssue(group.id, issueId, `issue:${group.id}:${issueId}`, 0);
     }
 
     if (group.issueIds.length < group.totalCount) {
@@ -80,16 +103,16 @@ export function updateExpandedIssueRowKeys(
   expansionKey: string,
   isExpanded: boolean
 ): ReadonlySet<string> {
-  const nextKeys = new Set(currentKeys);
   if (isExpanded) {
-    nextKeys.add(expansionKey);
-    return nextKeys;
+    return currentKeys.has(expansionKey) ? currentKeys : new Set(currentKeys).add(expansionKey);
   }
-
-  for (const key of nextKeys) {
-    if (key === expansionKey || key.startsWith(`${expansionKey}:`)) nextKeys.delete(key);
+  let nextKeys: Set<string> | undefined;
+  for (const key of currentKeys) {
+    if (key !== expansionKey && !key.startsWith(`${expansionKey}:`)) continue;
+    nextKeys ??= new Set(currentKeys);
+    nextKeys.delete(key);
   }
-  return nextKeys;
+  return nextKeys ?? currentKeys;
 }
 
 export function sumNumericEstimateValues(values: (string | number | null | undefined)[]): number | null {

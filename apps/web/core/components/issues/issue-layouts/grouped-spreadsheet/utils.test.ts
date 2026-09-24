@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { MAX_FILTERED_HIERARCHY_DEPTH } from "../hierarchy-filter";
 import {
   buildGroupedTableVirtualRows,
   getGroupedTableVirtualRowHeight,
@@ -71,8 +72,22 @@ describe("Grouped Table summaries", () => {
       ])
     ).toEqual([
       { type: "group", key: "group:current", groupId: "current" },
-      { type: "issue", key: "issue:current:one", groupId: "current", issueId: "one" },
-      { type: "issue", key: "issue:current:two", groupId: "current", issueId: "two" },
+      {
+        type: "issue",
+        key: "issue:current:one",
+        groupId: "current",
+        issueId: "one",
+        nestingLevel: 0,
+        isExpanded: false,
+      },
+      {
+        type: "issue",
+        key: "issue:current:two",
+        groupId: "current",
+        issueId: "two",
+        nestingLevel: 0,
+        isExpanded: false,
+      },
       {
         type: "load-more",
         key: "load-more:current",
@@ -109,6 +124,83 @@ describe("Grouped Table summaries", () => {
 
     expect(expandedKeys).toEqual(new Set([parentKey, childKey]));
     expect(updateExpandedIssueRowKeys(expandedKeys, parentKey, false)).toEqual(new Set());
+  });
+
+  it("gives every expanded child its own virtual item independently of its parent's viewport position", () => {
+    const childIds = Array.from({ length: 115 }, (_, index) => `child-${index}`);
+    const rows = buildGroupedTableVirtualRows(
+      [{ id: "current", issueIds: ["parent", "next"], totalCount: 3, isExpanded: true, isLoadingMore: false }],
+      {
+        getSubIssueIds: (issueId) => (issueId === "parent" ? childIds : []),
+        isExpanded: (_issueId, key) => key === "issue:current:parent",
+      }
+    );
+    const childRows = rows.filter((row) => row.type === "issue" && row.nestingLevel === 1);
+    expect(childRows.map((row) => row.key)).toEqual(childIds.map((id) => `issue:current:parent:${id}`));
+    expect(rows.slice(52, 57).map((row) => row.key)).toEqual(
+      childIds.slice(50, 55).map((id) => `issue:current:parent:${id}`)
+    );
+    expect(rows.at(-2)?.key).toBe("issue:current:next");
+    expect(rows.at(-1)).toMatchObject({ type: "load-more", loadedCount: 2, unloadedCount: 1 });
+  });
+
+  it("keeps descendants inside their expanded path and group even when the same issue appears twice", () => {
+    const children: Record<string, string[]> = { parent: ["child"], child: ["grandchild"] };
+    const expandedKeys = new Set(["issue:alpha:parent", "issue:alpha:parent:child", "issue:beta:parent:child"]);
+    const groups = [
+      { id: "alpha", issueIds: ["parent"], totalCount: 1, isExpanded: true, isLoadingMore: false },
+      { id: "beta", issueIds: ["parent"], totalCount: 1, isExpanded: true, isLoadingMore: false },
+    ];
+    const hierarchy = {
+      getSubIssueIds: (issueId: string) => children[issueId],
+      isExpanded: (_issueId: string, key: string) => expandedKeys.has(key),
+    };
+    expect(buildGroupedTableVirtualRows(groups, hierarchy).map((row) => row.key)).toEqual([
+      "group:alpha",
+      "issue:alpha:parent",
+      "issue:alpha:parent:child",
+      "issue:alpha:parent:child:grandchild",
+      "group:beta",
+      "issue:beta:parent",
+    ]);
+    expandedKeys.delete("issue:alpha:parent");
+    expect(buildGroupedTableVirtualRows(groups, hierarchy).map((row) => row.key)).toEqual([
+      "group:alpha",
+      "issue:alpha:parent",
+      "group:beta",
+      "issue:beta:parent",
+    ]);
+    groups[0].isExpanded = false;
+    expect(buildGroupedTableVirtualRows(groups, hierarchy).map((row) => row.key)).toEqual([
+      "group:alpha",
+      "group:beta",
+      "issue:beta:parent",
+    ]);
+  });
+
+  it("bounds hierarchy expansion at the supported depth and rejects ancestry cycles", () => {
+    const rows = buildGroupedTableVirtualRows(
+      [{ id: "current", issueIds: ["0"], totalCount: 1, isExpanded: true, isLoadingMore: false }],
+      {
+        getSubIssueIds: (issueId) => ["0", String(Number(issueId) + 1)],
+        isExpanded: () => true,
+      }
+    );
+    const issueRows = rows.filter((row) => row.type === "issue");
+    expect(issueRows.map((row) => row.issueId)).toEqual(["0", "1", "2", "3"]);
+    expect(issueRows.at(-1)).toMatchObject({ nestingLevel: MAX_FILTERED_HIERARCHY_DEPTH, isExpanded: false });
+  });
+
+  it("collapses only descendants of the exact expansion path", () => {
+    const expandedKeys = new Set([
+      "issue:alpha:parent",
+      "issue:alpha:parent:child",
+      "issue:alpha:parent-other",
+      "issue:beta:parent",
+    ]);
+    expect(updateExpandedIssueRowKeys(expandedKeys, "issue:alpha:parent", false)).toEqual(
+      new Set(["issue:alpha:parent-other", "issue:beta:parent"])
+    );
   });
 
   it("reserves stable scroll space while a large group paginates", () => {

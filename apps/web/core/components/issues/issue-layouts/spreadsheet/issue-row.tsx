@@ -58,6 +58,7 @@ interface Props {
   selectionHelpers: TSelectionHelper;
   shouldRenderByDefault?: boolean;
   forceRender?: boolean;
+  renderSubIssues?: boolean;
   expansionKey?: string;
   expandedIssueKeys?: ReadonlySet<string>;
   onIssueExpansionChange?: (expansionKey: string, isExpanded: boolean) => void;
@@ -83,6 +84,7 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
     selectionHelpers,
     shouldRenderByDefault,
     forceRender = false,
+    renderSubIssues = true,
     expansionKey,
     expandedIssueKeys,
     onIssueExpansionChange,
@@ -116,7 +118,7 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
     issuesFilter.issueFilters?.richFilters,
     issuesFilter.issueFilters?.displayFilters?.layout
   );
-  const subIssueIds = subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery);
+  const subIssueIds = renderSubIssues ? subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery) : undefined;
   const subIssues =
     isExpanded && !isEpic && subIssueIds && subIssueIds.length > 1 && "issuesSortWithOrderBy" in issues
       ? issues.issuesSortWithOrderBy(subIssueIds, issuesFilter.issueFilters?.displayFilters?.order_by ?? "-created_at")
@@ -166,10 +168,12 @@ export const SpreadsheetIssueRow = observer(function SpreadsheetIssueRow(props: 
           isEpic={isEpic}
           wrapTitle={wrapTitle}
           fixedColumns={fixedColumns}
+          renderSubIssues={renderSubIssues}
         />
       </RenderIfVisible>
 
-      {isExpanded &&
+      {renderSubIssues &&
+        isExpanded &&
         !isEpic &&
         subIssues?.map((subIssueId: string) => (
           <SpreadsheetIssueRow
@@ -218,6 +222,7 @@ interface IssueRowDetailsProps {
   isEpic?: boolean;
   wrapTitle?: boolean;
   fixedColumns?: boolean;
+  renderSubIssues: boolean;
 }
 
 const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetailsProps) {
@@ -239,6 +244,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     isEpic = false,
     wrapTitle = false,
     fixedColumns = false,
+    renderSubIssues,
   } = props;
   // states
   const [isMenuActive, setIsMenuActive] = useState(false);
@@ -269,7 +275,8 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     issuesFilter.issueFilters?.displayFilters?.layout
   );
   const hierarchyFilters = hierarchyFilterQuery?.filters;
-  const isSubIssueCacheLoaded = subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery) !== undefined;
+  const isSubIssueCacheLoaded =
+    renderSubIssues && subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery) !== undefined;
   const hierarchyLayout = hierarchyFilterQuery?.layout;
   const shouldAutoExpandHierarchy = shouldAutoExpandIssueHierarchy(
     hierarchyFilterQuery,
@@ -281,6 +288,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
   useOutsideClickDetector(menuActionRef, () => setIsMenuActive(false));
 
   useEffect(() => {
+    if (!renderSubIssues) return;
     if (!hierarchyFilters || !hierarchyLayout || isEpic) {
       if (autoFetchedFilterRef.current) {
         autoFetchedFilterRef.current = undefined;
@@ -312,6 +320,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
     isSubIssueCacheLoaded,
     issueDetail,
     nestingLevel,
+    renderSubIssues,
     setExpanded,
     subIssuesStore,
     shouldAutoExpandHierarchy,
@@ -339,7 +348,7 @@ const IssueRowDetails = observer(function IssueRowDetails(props: IssueRowDetails
       handleIssuePeekOverview(issueDetail);
     } else {
       setExpanded((prevState) => {
-        if (!prevState && workspaceSlug && issueDetail && issueDetail.project_id)
+        if (renderSubIssues && !prevState && workspaceSlug && issueDetail && issueDetail.project_id)
           subIssuesStore.fetchSubIssues(
             workspaceSlug.toString(),
             issueDetail.project_id,

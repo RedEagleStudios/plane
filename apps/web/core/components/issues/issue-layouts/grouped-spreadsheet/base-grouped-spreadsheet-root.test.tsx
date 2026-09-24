@@ -47,7 +47,10 @@ function createViewStore() {
       },
       getIssuesByIds: (ids: string[]) => ids.map((id) => issueMap[id]),
     },
-    issueDetail: { relation: { extractRelationsFromIssues: vi.fn() } },
+    issueDetail: {
+      relation: { extractRelationsFromIssues: vi.fn() },
+      subIssues: { refreshSubscribedSubIssues: vi.fn().mockResolvedValue(undefined) },
+    },
     projectViewIssues: undefined as ProjectViewIssues | undefined,
   };
   const filters = new ProjectViewIssuesFilter(root as unknown as IIssueRootStore);

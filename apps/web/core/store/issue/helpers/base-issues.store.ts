@@ -523,6 +523,10 @@ export abstract class BaseIssuesStore implements IBaseIssuesStore {
 
     // store Pagination options for next subsequent calls and data like next cursor etc
     this.storePreviousPaginationValues(issuesResponse, options);
+
+    void this.rootIssueStore.issueDetail.subIssues.refreshSubscribedSubIssues(workspaceSlug).catch((error) => {
+      console.error("Error refreshing expanded sub-work items after list refresh:", error);
+    });
   }
 
   /**

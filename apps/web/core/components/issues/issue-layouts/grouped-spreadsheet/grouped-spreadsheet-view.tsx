@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { observer } from "mobx-react";
+import { useParams } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ALL_ISSUES, SPREADSHEET_PROPERTY_LIST, SPREADSHEET_SELECT_GROUP } from "@plane/constants";
@@ -26,6 +27,7 @@ import { IssueBulkOperationsRoot } from "@/components/issues/bulk-operations";
 import { QuickAddIssueRoot, SpreadsheetAddIssueButton } from "@/components/issues/issue-layouts/quick-add";
 import { useEstimate } from "@/hooks/store/estimates/use-estimate";
 import { useCycle } from "@/hooks/store/use-cycle";
+import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 import { useProject } from "@/hooks/store/use-project";
 import { useBulkOperationStatus } from "@/hooks/use-bulk-operation-status";
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
@@ -33,6 +35,7 @@ import { useIssuesStore } from "@/hooks/use-issue-layout-store";
 import { useTableKeyboardNavigation } from "@/hooks/use-table-keyboard-navigation";
 import { shouldRenderColumn } from "@/helpers/issue-filter.helper";
 import { usePlatformOS } from "@/hooks/use-platform-os";
+import { getIssueHierarchyFilterQuery, shouldAutoExpandIssueHierarchy } from "../hierarchy-filter";
 import type { TRenderQuickActions } from "../list/list-view-types";
 import { getGroupByColumns } from "../utils";
 import { ColumnResizeHandle } from "../spreadsheet/column-resize-handle";
@@ -50,6 +53,7 @@ import {
 
 const GROUPED_TABLE_ROW_HEIGHT = 44;
 const GROUPED_TABLE_OVERSCAN = 20;
+const EMPTY_EXPANDED_KEYS: ReadonlySet<string> = new Set();
 const GROUP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -99,21 +103,53 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
   const portalRef = useRef<HTMLDivElement | null>(null);
   const isScrolled = useRef(false);
   const requestedPageKeys = useRef(new Set<string>());
+  const requestedHierarchyParents = useRef<Map<string, boolean> | undefined>(undefined);
+  const { workspaceSlug } = useParams();
   const isBulkOperationsEnabled = useBulkOperationStatus();
   const handleKeyboardNavigation = useTableKeyboardNavigation();
   const { currentProjectDetails } = useProject();
   const { getCycleById } = useCycle();
   const estimate = useEstimate(currentProjectDetails?.estimate ?? undefined);
-  const { issues } = useIssuesStore();
+  const { issues, issuesFilter } = useIssuesStore();
+  const { subIssues: subIssuesStore } = useIssueDetail();
   const { getGroupIssueCount, getIssueLoader } = issues;
   const getGroupIssueMatchCount = "getGroupIssueMatchCount" in issues ? issues.getGroupIssueMatchCount : undefined;
   const { isMobile } = usePlatformOS();
   const [mobileExpansionOverrides, setMobileExpansionOverrides] = useState<Record<string, boolean>>({});
-  const [expandedIssueRowKeys, setExpandedIssueRowKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const hierarchyFilterQuery = getIssueHierarchyFilterQuery(
+    issuesFilter.issueFilters?.richFilters,
+    displayFilters.layout
+  );
+  const hierarchyFilters = hierarchyFilterQuery?.filters;
+  const hierarchyLayout = hierarchyFilterQuery?.layout;
+  const expansionContextKey = JSON.stringify([
+    workspaceSlug,
+    currentProjectDetails?.id,
+    groupBy,
+    hierarchyLayout,
+    hierarchyFilters,
+  ]);
+  const [expansionState, setExpansionState] = useState({
+    contextKey: expansionContextKey,
+    expandedKeys: EMPTY_EXPANDED_KEYS,
+    collapsedKeys: EMPTY_EXPANDED_KEYS,
+  });
+  const expandedKeys =
+    expansionState.contextKey === expansionContextKey ? expansionState.expandedKeys : EMPTY_EXPANDED_KEYS;
+  const collapsedKeys =
+    expansionState.contextKey === expansionContextKey ? expansionState.collapsedKeys : EMPTY_EXPANDED_KEYS;
   const [columnWidths, setColumnWidths] = useState<Partial<Record<"title" | keyof IIssueDisplayProperties, number>>>(
     {}
   );
   const wrapTitle = displayFilters.wrap_titles ?? false;
+
+  useEffect(() => {
+    setExpansionState((current) =>
+      current.contextKey === expansionContextKey
+        ? current
+        : { contextKey: expansionContextKey, expandedKeys: EMPTY_EXPANDED_KEYS, collapsedKeys: EMPTY_EXPANDED_KEYS }
+    );
+  }, [expansionContextKey]);
 
   const groups = useMemo(
     () =>
@@ -161,10 +197,83 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
 
   const groupById = new Map<string, IGroupByColumn>(visibleGroups.map((group) => [group.id, group]));
   const virtualGroupById = new Map(virtualGroups.map((group) => [group.id, group]));
-  const virtualRows = buildGroupedTableVirtualRows(virtualGroups);
-  const loadedIssueIds = virtualGroups.flatMap((group) => group.issueIds);
-  const entities = Object.fromEntries(virtualGroups.map((group) => [group.id, group.issueIds]));
-  entities[SPREADSHEET_SELECT_GROUP] = loadedIssueIds;
+  const virtualRows = buildGroupedTableVirtualRows(virtualGroups, {
+    getSubIssueIds: (issueId) => {
+      const childIds = subIssuesStore.subIssuesByIssueId(issueId, hierarchyFilterQuery);
+      return childIds && childIds.length > 1 && "issuesSortWithOrderBy" in issues
+        ? issues.issuesSortWithOrderBy(childIds, displayFilters.order_by ?? "-created_at")
+        : childIds;
+    },
+    isExpanded: (issueId, expansionKey, nestingLevel) =>
+      expandedKeys.has(expansionKey) ||
+      (!collapsedKeys.has(expansionKey) &&
+        shouldAutoExpandIssueHierarchy(
+          hierarchyFilterQuery,
+          issueMap[issueId]?.sub_issues_count ?? 0,
+          nestingLevel,
+          false
+        )),
+  });
+  const expandedIssueRowKeys = new Set<string>();
+  const hierarchyParents = new Map<string, [projectId: string, issueId: string]>();
+  const missingHierarchyParents: string[] = [];
+  const entities = Object.fromEntries(virtualGroups.map((group) => [group.id, [...group.issueIds]]));
+  for (const row of virtualRows) {
+    if (row.type !== "issue") continue;
+    if (row.nestingLevel > 0) entities[row.groupId].push(row.issueId);
+    if (!row.isExpanded) continue;
+    expandedIssueRowKeys.add(row.key);
+    const projectId = issueMap[row.issueId]?.project_id;
+    if (projectId && !hierarchyParents.has(row.issueId)) {
+      hierarchyParents.set(row.issueId, [projectId, row.issueId]);
+      if (subIssuesStore.subIssuesByIssueId(row.issueId, hierarchyFilterQuery) === undefined) {
+        missingHierarchyParents.push(row.issueId);
+      }
+    }
+  }
+  entities[SPREADSHEET_SELECT_GROUP] = [...new Set(Object.values(entities).flat())];
+
+  // Parent subscriptions belong to the hierarchy model, not its mounted viewport rows.
+  const hierarchyParentKey = JSON.stringify(
+    [...hierarchyParents.values()].toSorted(([a, b], [c, d]) => a.localeCompare(c) || b.localeCompare(d))
+  );
+  const missingHierarchyParentKey = JSON.stringify(missingHierarchyParents.toSorted());
+  useEffect(() => {
+    if (!workspaceSlug) return;
+    const parents = JSON.parse(hierarchyParentKey) as [string, string][];
+    const query =
+      hierarchyFilters && hierarchyLayout
+        ? { filters: hierarchyFilters, layout: hierarchyLayout, sub_issue: false as const }
+        : undefined;
+    const unsubscribe = parents.map(([projectId, issueId]) =>
+      subIssuesStore.subscribeToSubIssues(workspaceSlug.toString(), projectId, issueId, query)
+    );
+    return () => unsubscribe.forEach((dispose) => dispose());
+  }, [hierarchyParentKey, hierarchyFilters, hierarchyLayout, subIssuesStore, workspaceSlug]);
+
+  useEffect(() => {
+    if (!workspaceSlug) return;
+    const parents = JSON.parse(hierarchyParentKey) as [string, string][];
+    const missingParents = new Set<string>(JSON.parse(missingHierarchyParentKey) as string[]);
+    const query =
+      hierarchyFilters && hierarchyLayout
+        ? { filters: hierarchyFilters, layout: hierarchyLayout, sub_issue: false as const }
+        : undefined;
+    const activeRequests = new Map<string, boolean>();
+    for (const [projectId, issueId] of parents) {
+      const requestKey = JSON.stringify([workspaceSlug, projectId, issueId, hierarchyLayout, hierarchyFilters]);
+      const isCacheLoaded = !missingParents.has(issueId);
+      const wasCacheLoaded = requestedHierarchyParents.current?.get(requestKey);
+      activeRequests.set(requestKey, isCacheLoaded);
+      // Fetch on expansion/remount and on loaded-to-missing cache invalidation.
+      // An initially failed request remains missing, so it cannot trigger a retry loop.
+      if (wasCacheLoaded !== undefined && !(wasCacheLoaded && !isCacheLoaded)) continue;
+      void subIssuesStore.fetchSubIssues(workspaceSlug.toString(), projectId, issueId, query).catch((error) => {
+        console.error("Error fetching sub-work items:", error);
+      });
+    }
+    requestedHierarchyParents.current = activeRequests;
+  }, [hierarchyParentKey, missingHierarchyParentKey, hierarchyFilters, hierarchyLayout, subIssuesStore, workspaceSlug]);
 
   const handleGroupToggle = (groupId: string, isExpanded: boolean) => {
     if (!isMobile) {
@@ -174,9 +283,25 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
     setMobileExpansionOverrides((current) => ({ ...current, [groupId]: !isExpanded }));
   };
 
-  const handleIssueExpansionChange = useCallback((expansionKey: string, isExpanded: boolean) => {
-    setExpandedIssueRowKeys((currentKeys) => updateExpandedIssueRowKeys(currentKeys, expansionKey, isExpanded));
-  }, []);
+  const handleIssueExpansionChange = useCallback(
+    (expansionKey: string, isExpanded: boolean) => {
+      setExpansionState((current) => {
+        const isCurrentContext = current.contextKey === expansionContextKey;
+        const currentExpandedKeys = isCurrentContext ? current.expandedKeys : EMPTY_EXPANDED_KEYS;
+        const currentCollapsedKeys = isCurrentContext ? current.collapsedKeys : EMPTY_EXPANDED_KEYS;
+        return {
+          contextKey: expansionContextKey,
+          expandedKeys: updateExpandedIssueRowKeys(currentExpandedKeys, expansionKey, isExpanded),
+          collapsedKeys: updateExpandedIssueRowKeys(
+            updateExpandedIssueRowKeys(currentCollapsedKeys, expansionKey, false),
+            expansionKey,
+            !isExpanded
+          ),
+        };
+      });
+    },
+    [expansionContextKey]
+  );
 
   const isEstimateEnabled = currentProjectDetails?.estimate != null;
   const spreadsheetColumnsList = SPREADSHEET_PROPERTY_LIST.filter((property) => {
@@ -204,7 +329,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
     overscan: GROUPED_TABLE_OVERSCAN,
     getItemKey: (index) => virtualRows[index]?.key ?? index,
   });
-  // Each measured tbody includes the parent and all expanded descendants.
+  // Every measured tbody contains a single row, including expanded descendants.
   // Invalidate offscreen heights as well when wrapping or column widths change.
   useEffect(() => {
     rowVirtualizer.measure();
@@ -324,7 +449,8 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                           displayProperties={displayProperties}
                           quickActions={quickActions}
                           canEditProperties={canEditProperties}
-                          nestingLevel={0}
+                          nestingLevel={row.nestingLevel}
+                          spacingLeft={6 + row.nestingLevel * 12}
                           isEstimateEnabled={isEstimateEnabled}
                           updateIssue={updateIssue}
                           portalElement={portalRef}
@@ -333,6 +459,7 @@ export const GroupedSpreadsheetView = observer(function GroupedSpreadsheetView(p
                           spreadsheetColumnsList={spreadsheetColumnsList}
                           selectionHelpers={selectionHelpers}
                           forceRender
+                          renderSubIssues={false}
                           wrapTitle={wrapTitle}
                           fixedColumns
                           expansionKey={row.key}

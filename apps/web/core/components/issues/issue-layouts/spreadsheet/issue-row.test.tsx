@@ -16,6 +16,7 @@ import { useIssuesStore } from "@/hooks/use-issue-layout-store";
 import { ProjectViewIssuesFilter } from "@/store/issue/project-views/filter.store";
 import { ProjectViewIssues } from "@/store/issue/project-views/issue.store";
 import type { IIssueRootStore } from "@/store/issue/root.store";
+import { buildGroupedTableVirtualRows } from "../grouped-spreadsheet/utils";
 import { SpreadsheetIssueRow } from "./issue-row";
 
 vi.mock("next/navigation", () => ({
@@ -160,7 +161,7 @@ function renderHierarchy(expandedIssueKeys: ReadonlySet<string> = expandedKeys) 
 const ascendingRows = ["parent", "early", "early-grandchild", "late-grandchild", "late", "other-parent"];
 const descendingRows = ["parent", "late", "early", "late-grandchild", "early-grandchild", "other-parent"];
 
-describe("Grouped spreadsheet child sorting", () => {
+describe("Spreadsheet child sorting", () => {
   it.each<[TIssueOrderByOptions, TIssueOrderByOptions]>([
     ["priority", "-priority"],
     ["created_at", "-created_at"],
@@ -215,5 +216,54 @@ describe("Grouped spreadsheet child sorting", () => {
     expect(renderHierarchy()).toEqual(descendingRows);
     setOrder("-target_date");
     expect(renderHierarchy()).toEqual(descendingRows);
+  });
+
+  it("renders a virtual child window without recursively mounting expanded siblings or descendants", () => {
+    const { children, issueMap } = createHierarchy();
+    const childIds = Array.from({ length: 115 }, (_, index) => `child-${index}`);
+    runInAction(() => {
+      children.parent = childIds;
+      childIds.forEach((id, index) => {
+        issueMap[id] = { ...issueMap.early, id, name: id, sequence_id: index + 10, sub_issues_count: 0 };
+      });
+      children["child-50"] = ["early-grandchild"];
+      issueMap["child-50"].sub_issues_count = 1;
+    });
+    const expandedIssueKeys = new Set(["issue:cycle:parent", "issue:cycle:parent:child-50"]);
+    const rows = buildGroupedTableVirtualRows(
+      [{ id: "cycle", issueIds: ["parent"], totalCount: 1, isExpanded: true, isLoadingMore: false }],
+      {
+        getSubIssueIds: (id) => children[id],
+        isExpanded: (_id, key) => expandedIssueKeys.has(key),
+      }
+    );
+    const renderWindow = (start: number, end: number) => {
+      const markup = renderToString(
+        <table>
+          <tbody>
+            {rows
+              .slice(start, end)
+              .map((row) =>
+                row.type === "issue" ? (
+                  <SpreadsheetIssueRow
+                    {...rowProps}
+                    key={row.key}
+                    issueId={row.issueId}
+                    expansionKey={row.key}
+                    nestingLevel={row.nestingLevel}
+                    expandedIssueKeys={expandedIssueKeys}
+                    renderSubIssues={false}
+                    forceRender
+                  />
+                ) : null
+              )}
+          </tbody>
+        </table>
+      );
+      return [...markup.matchAll(/id="issue-([^"]+)"/g)].map((match) => match[1]);
+    };
+    expect(renderWindow(1, 2)).toEqual(["parent"]);
+    expect(renderWindow(52, 55)).toEqual(["child-50", "early-grandchild", "child-51"]);
+    expect(renderWindow(53, 55)).toEqual(["early-grandchild", "child-51"]);
   });
 });
