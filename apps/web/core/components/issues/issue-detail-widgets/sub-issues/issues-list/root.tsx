@@ -168,8 +168,9 @@ export const SubIssuesListRoot = observer(function SubIssuesListRoot(props: Prop
                 key={row.key}
                 ref={virtualizer.measureElement}
                 data-index={virtualItem.index}
-                className="absolute top-0 left-0 w-full"
-                style={{ transform: `translateY(${virtualItem.start - scrollMargin}px)` }}
+                className="absolute left-0 w-full"
+                // `top` instead of `transform`: transforms trap inline `fixed` dropdown menus inside the row.
+                style={{ top: virtualItem.start - scrollMargin }}
               >
                 {row.type === "group" ? (
                   <SubIssuesListGroup
