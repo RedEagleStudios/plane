@@ -91,6 +91,8 @@ export function FiltersDropdown(props: Props) {
                   ref={setPopperElement}
                   style={styles.popper}
                   {...attributes.popper}
+                  // Portaled outside peek/sidebar containers; keep their outside-click handlers from closing them.
+                  data-prevent-outside-click
                 >
                   <div className="my-1 overflow-hidden rounded-sm border border-subtle bg-surface-1 shadow-raised-100">
                     <div className="flex max-h-[30rem] w-[18.75rem] flex-col overflow-hidden lg:max-h-[37.5rem]">
