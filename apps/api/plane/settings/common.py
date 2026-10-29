@@ -334,6 +334,9 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["application/json"]
+# Prefork children per worker; unset falls back to cpu_count(), which in containers is
+# the host core count (48 on Railway) and costs ~85 MB of RAM per idle child.
+CELERY_WORKER_CONCURRENCY = int(os.environ.get("CELERY_WORKER_CONCURRENCY") or 0) or None
 
 
 CELERY_IMPORTS = (
